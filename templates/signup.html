@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Sign Up - WC 2026{% endblock %}
+
+{% block content %}
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-background-light dark:bg-background-dark group/design-root overflow-x-hidden">
+    <!-- Hero Header with Image -->
+    <div class="relative h-48 bg-gradient-to-br from-green-600 via-blue-600 to-purple-700 overflow-hidden">
+        <div class="absolute inset-0 opacity-20">
+            <img src="https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=800&h=400&fit=crop" 
+                 alt="Football Stadium" 
+                 class="w-full h-full object-cover">
+        </div>
+        <div class="absolute inset-0 bg-gradient-to-t from-background-dark/80 to-transparent"></div>
+        <a href="{{ url_for('index') }}" class="absolute top-4 left-4 z-10 flex size-12 shrink-0 items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors">
+            <span class="material-symbols-outlined">arrow_back</span>
+        </a>
+        <div class="relative h-full flex flex-col items-center justify-center text-center px-4">
+            <div class="bg-white/10 backdrop-blur-md rounded-full p-3 mb-2">
+                <span class="material-symbols-outlined text-4xl text-white">emoji_events</span>
+            </div>
+            <h1 class="text-white text-2xl font-black mb-1">Join the Journey!</h1>
+            <p class="text-green-200 text-sm font-medium">Support Your Nation to Victory</p>
+        </div>
+    </div>
+    
+    <div class="flex-grow flex flex-col px-4 pb-8 pt-4">
+        <div class="flex max-w-md mx-auto w-full flex-col gap-5 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 border border-slate-200 dark:border-slate-700 mt-4">
+            {% if error %}
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2">
+                <span class="material-symbols-outlined">error</span>
+                <span>{{ error }}</span>
+            </div>
+            {% endif %}
+            
+            <h2 class="text-slate-900 dark:text-white text-xl font-bold text-center">Create Your Account</h2>
+            
+            <form method="POST" class="flex flex-col gap-4">
+                <div class="flex flex-col">
+                    <p class="text-slate-900 dark:text-white text-sm font-medium leading-normal pb-1.5">Username</p>
+                    <input name="username" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-slate-900 dark:text-white focus:outline-0 focus:ring-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-primary h-12 placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 text-base font-normal leading-normal" placeholder="Choose a username" required>
+                </div>
+                <div class="flex flex-col">
+                    <p class="text-slate-900 dark:text-white text-sm font-medium leading-normal pb-1.5">Email</p>
+                    <input name="email" type="email" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-slate-900 dark:text-white focus:outline-0 focus:ring-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-primary h-12 placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 text-base font-normal leading-normal" placeholder="Enter your email" required>
+                </div>
+                <div class="flex flex-col">
+                    <p class="text-slate-900 dark:text-white text-sm font-medium leading-normal pb-1.5">Password</p>
+                    <div class="flex w-full flex-1 items-stretch rounded-xl">
+                        <input name="password" type="password" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-l-xl text-slate-900 dark:text-white focus:outline-0 focus:ring-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-primary h-12 placeholder:text-slate-400 dark:placeholder:text-slate-500 p-3 border-r-0 pr-2 text-base font-normal leading-normal" placeholder="Create a password (min 8 characters)" minlength="8" required>
+                        <div class="text-slate-400 dark:text-slate-500 flex border border-l-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 items-center justify-center pr-3 rounded-r-xl">
+                            <span class="material-symbols-outlined text-xl">lock</span>
+                        </div>
+                    </div>
+                    <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">Min 8 characters with letters and numbers</p>
+                </div>
+                
+                <!-- Terms and Conditions -->
+                <div class="bg-slate-100 dark:bg-slate-800 p-3 rounded-xl border border-slate-300 dark:border-slate-700">
+                    <div class="flex items-start gap-2">
+                        <input type="checkbox" name="terms_accepted" id="terms_accepted" class="mt-1 w-4 h-4" required>
+                        <label for="terms_accepted" class="text-slate-900 dark:text-white text-xs leading-relaxed">
+                            I agree to the <a href="#" onclick="showTerms(); return false;" class="text-primary font-semibold underline">Terms and Conditions</a>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="flex">
+                    <button type="submit" id="signupBtn" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 flex-1 bg-primary text-white text-base font-bold leading-normal tracking-[0.015em]">
+                        <span class="truncate">Sign Up</span>
+                    </button>
+                </div>
+            </form>
+            
+            <p class="text-center text-slate-600 dark:text-slate-400 text-sm">
+                Already have an account? <a href="{{ url_for('login') }}" class="text-primary font-bold">Login</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Terms and Conditions Modal -->
+<div id="termsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-xl max-w-2xl max-h-[80vh] overflow-y-auto p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Terms and Conditions</h2>
+            <button onclick="closeTerms()" class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+                <span class="material-symbols-outlined text-3xl">close</span>
+            </button>
+        </div>
+        
+        <div class="text-slate-700 dark:text-slate-300 space-y-4 text-sm">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Welcome to World Cup Fan Zone</h3>
+            
+            <p>By creating an account, you agree to the following terms:</p>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">1. Account Registration</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>You must provide accurate and complete information</li>
+                <li>You are responsible for maintaining the security of your password</li>
+                <li>You must be at least 18 years old to participate</li>
+            </ul>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">2. Monthly Payments</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>Monthly contribution is ₹50 per month</li>
+                <li>Payments are non-refundable</li>
+                <li>All payments must be approved by admin before being confirmed</li>
+                <li>Payment history will be tracked in your profile</li>
+            </ul>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">3. Nation Selection</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>You must select one nation to support</li>
+                <li>Nation selection is permanent and cannot be changed</li>
+                <li>Your choice will be visible on leaderboards</li>
+            </ul>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">4. Prize Distribution</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>If your selected nation wins the World Cup 2026, you are eligible for rewards</li>
+                <li>Total prize pool is calculated from all completed payments</li>
+                <li>Prize pool is divided equally among all supporters of the winning nation</li>
+                <li>Reward claims must be approved by admin</li>
+                <li>Rewards are subject to verification and approval</li>
+            </ul>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">5. Premium Status</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>Premium status is automatically granted after 3 successful payments</li>
+                <li>Premium members get special recognition on the platform</li>
+            </ul>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">6. Email Communications</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>You will receive email notifications about payment reminders</li>
+                <li>Payment approval/rejection notifications will be sent via email</li>
+                <li>Reward approvals will be communicated via email</li>
+                <li>You can contact support through registered email</li>
+            </ul>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">7. User Conduct</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>Users must not attempt to manipulate the system</li>
+                <li>Multiple accounts are not allowed</li>
+                <li>Any fraudulent activity will result in account termination</li>
+            </ul>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">8. Liability</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>World Cup Fan Zone is not responsible for payment processing delays</li>
+                <li>Platform decisions regarding rewards are final</li>
+                <li>We reserve the right to modify these terms with notice</li>
+            </ul>
+            
+            <h4 class="font-bold text-slate-900 dark:text-white">9. Data Privacy</h4>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>Your personal information will be kept secure</li>
+                <li>Email addresses are used only for platform communications</li>
+                <li>Payment information is tracked for transparency</li>
+            </ul>
+            
+            <p class="font-bold">By clicking "I Agree", you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.</p>
+        </div>
+        
+        <div class="mt-6 flex justify-end">
+            <button onclick="acceptTerms()" class="bg-primary text-white px-6 py-2 rounded-lg font-bold">
+                I Accept
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function showTerms() {
+    document.getElementById('termsModal').classList.remove('hidden');
+}
+
+function closeTerms() {
+    document.getElementById('termsModal').classList.add('hidden');
+}
+
+function acceptTerms() {
+    document.getElementById('terms_accepted').checked = true;
+    closeTerms();
+}
+</script>
+{% endblock %}

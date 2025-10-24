@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Flask
+instance/
+.webassets-cache
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment Variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Buildozer (Android build files - not needed for web)
+.buildozer/
+bin/
+buildozer.spec
+*.apk
+main.py
+services/
+
+# Build scripts (not needed for deployment)
+build_android.py
+install_ndk25b.py
+emergency_fix_ndk.sh
+setup_ndk.sh
+fix_buildozer.sh
+
+# Documentation (optional - remove if you want to keep)
+ANDROID_BUILD_GUIDE.md
+PWA_INSTALL_GUIDE.md
+PAYMENT_SYSTEM_UPDATE.md
+
+# Backup files
+*.backup
+*.bak
+
+# Temporary files
+*.tmp
+.cache/

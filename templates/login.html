@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Login - WC 2026{% endblock %}
+
+{% block content %}
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-background-light dark:bg-background-dark group/design-root overflow-x-hidden">
+    <!-- Hero Header with Image -->
+    <div class="relative h-64 bg-gradient-to-br from-primary via-blue-600 to-blue-800 overflow-hidden">
+        <div class="absolute inset-0 opacity-20">
+            <img src="https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&h=400&fit=crop" 
+                 alt="World Cup" 
+                 class="w-full h-full object-cover">
+        </div>
+        <div class="absolute inset-0 bg-gradient-to-t from-background-dark/80 to-transparent"></div>
+        <a href="{{ url_for('index') }}" class="absolute top-4 left-4 z-10 flex size-12 shrink-0 items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors">
+            <span class="material-symbols-outlined">arrow_back</span>
+        </a>
+        <div class="relative h-full flex flex-col items-center justify-center text-center px-4">
+            <div class="bg-white/10 backdrop-blur-md rounded-full p-4 mb-4">
+                <span class="material-symbols-outlined text-6xl text-white">sports_soccer</span>
+            </div>
+            <h1 class="text-white text-4xl font-black mb-2">Welcome Back!</h1>
+            <p class="text-blue-200 text-lg font-medium">May Your Nation Lead You to Glory</p>
+        </div>
+    </div>
+    
+    <div class="flex-grow flex flex-col justify-center px-4 -mt-8">
+        <div class="flex max-w-md mx-auto w-full flex-col gap-6 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700">
+            {% if error %}
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl">
+                {{ error }}
+            </div>
+            {% endif %}
+            
+            <h2 class="text-slate-900 dark:text-white text-2xl font-bold text-center mb-2">Login to Your Account</h2>
+            
+            <form method="POST" class="flex flex-col gap-6">
+                <div class="flex flex-col min-w-40 flex-1">
+                    <p class="text-slate-900 dark:text-white text-base font-medium leading-normal pb-2">Username</p>
+                    <input name="username" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-slate-900 dark:text-white focus:outline-0 focus:ring-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-primary h-14 placeholder:text-slate-400 dark:placeholder:text-slate-500 p-4 text-base font-normal leading-normal" placeholder="Enter your username" required>
+                </div>
+                <div class="flex flex-col min-w-40 flex-1">
+                    <p class="text-slate-900 dark:text-white text-base font-medium leading-normal pb-2">Password</p>
+                    <div class="flex w-full flex-1 items-stretch rounded-xl">
+                        <input name="password" type="password" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-l-xl text-slate-900 dark:text-white focus:outline-0 focus:ring-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-primary h-14 placeholder:text-slate-400 dark:placeholder:text-slate-500 p-4 border-r-0 pr-2 text-base font-normal leading-normal" placeholder="Enter your password" required>
+                        <div class="text-slate-400 dark:text-slate-500 flex border border-l-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 items-center justify-center pr-4 rounded-r-xl">
+                            <span class="material-symbols-outlined">lock</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex pt-2">
+                    <button type="submit" id="loginBtn" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 flex-1 bg-primary text-white text-base font-bold leading-normal tracking-[0.015em]">
+                        <span class="truncate">Login</span>
+                    </button>
+                </div>
+            </form>
+            
+            <p class="text-center text-slate-600 dark:text-slate-400">
+                Don't have an account? <a href="{{ url_for('signup') }}" class="text-primary font-bold">Sign up</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <meta name="description" content="WC 2026 - Support your nation to World Cup glory! Join fans worldwide and compete for prizes."/>
+    <meta name="theme-color" content="#1173d4"/>
+    
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon/favicon.svg') }}">
+    <link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon/favicon-96x96.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='favicon/apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    
+    <title>{% block title %}WC 2026 - May Your Nation Lead You to Glory{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1173d4",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "Noto Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.5rem", "lg": "1rem", "xl": "1.5rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+    <style>
+        body { min-height: max(884px, 100dvh); }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }
+        .footer-branding {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding: 1rem;
+            text-align: center;
+            margin-top: auto;
+        }
+        
+        /* Loading Spinner */
+        .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 2px solid white;
+            width: 16px;
+            height: 16px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .btn-loading {
+            opacity: 0.7;
+            pointer-events: none;
+            position: relative;
+        }
+        
+        .btn-loading .btn-text {
+            opacity: 0.5;
+        }
+        
+        /* Custom Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(16, 25, 34, 0.5);
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #1173d4 0%, #0d5aa8 100%);
+            border-radius: 10px;
+            border: 2px solid rgba(16, 25, 34, 0.5);
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #1586f5 0%, #1173d4 100%);
+        }
+        
+        /* Firefox scrollbar */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #1173d4 rgba(16, 25, 34, 0.5);
+        }
+    </style>
+    
+    <script>
+        // Global loading function
+        function setButtonLoading(button, loading = true) {
+            if (loading) {
+                button.classList.add('btn-loading');
+                const originalText = button.innerHTML;
+                button.setAttribute('data-original-text', originalText);
+                button.innerHTML = '<span class="spinner"></span> <span class="btn-text">Processing...</span>';
+                button.disabled = true;
+            } else {
+                button.classList.remove('btn-loading');
+                button.innerHTML = button.getAttribute('data-original-text') || button.innerHTML;
+                button.disabled = false;
+            }
+        }
+        
+        // Form submit with loading
+        function handleFormSubmit(form) {
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                setButtonLoading(submitBtn, true);
+            }
+        }
+        
+        // Attach to all forms on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('form').forEach(form => {
+                form.addEventListener('submit', function() {
+                    handleFormSubmit(this);
+                });
+            });
+        });
+    </script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display">
+    {% block content %}{% endblock %}
+</body>
+</html>

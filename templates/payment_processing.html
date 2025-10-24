@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Payment Processing - World Cup Fan Zone{% endblock %}
+
+{% block content %}
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between">
+        <div class="size-12 shrink-0"></div>
+        <h2 class="text-slate-800 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Payment Processing</h2>
+        <div class="size-12 shrink-0"></div>
+    </div>
+
+    <div class="flex flex-col items-center justify-center flex-1 px-4 py-8 text-center">
+        <div class="relative mb-8 flex h-40 w-40 items-center justify-center">
+            <div class="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+            <span class="material-symbols-outlined text-6xl text-primary">payments</span>
+        </div>
+        
+        <h1 class="text-slate-800 dark:text-white tracking-light text-[32px] font-bold leading-tight pb-3 pt-6">Payment Request Sent!</h1>
+        
+        <p class="text-slate-600 dark:text-slate-400 text-base font-normal leading-normal pb-3 pt-1 max-w-md">
+            Your payment request for <strong>{{ current_month }}</strong> has been sent to the admin. 
+            Please wait for approval. You will receive a notification once your payment is approved.
+        </p>
+
+        <div class="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 max-w-md">
+            <p class="text-blue-800 dark:text-blue-300 text-sm">
+                <span class="material-symbols-outlined align-middle text-base">info</span>
+                Amount: <strong>₹50</strong> for {{ current_month }}
+            </p>
+        </div>
+
+        <div class="mt-8 w-full max-w-sm">
+            <a href="{{ url_for('dashboard') }}" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 flex-1 bg-primary text-white text-base font-bold leading-normal tracking-[0.015em] no-underline">
+                <span class="truncate">Return to Dashboard</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

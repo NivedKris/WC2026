@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}WC 2026 - May Your Nation Lead You to Glory{% endblock %}
+
+{% block content %}
+<div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
+    <div class="flex-grow flex flex-col justify-center items-center px-4">
+        <div class="w-full flex-shrink-0">
+            <div class="relative flex h-auto min-h-screen w-full flex-col bg-[#111a22] dark group/design-root overflow-x-hidden">
+                <div class="flex w-full grow bg-[#111a22] @container py-3">
+                    <div class="w-full gap-1 overflow-hidden bg-[#111a22] @[480px]:gap-2 aspect-[2/3] flex flex-col">
+                        <div class="w-full bg-center bg-no-repeat bg-cover aspect-auto rounded-none flex-1" 
+                             style='background-image: url("static/logo/image.png"); background-position: bottom;'>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="w-full max-w-md text-center py-8">
+            <h1 class="text-white tracking-light text-[42px] font-black leading-tight px-4 text-center pb-2">WC 2026</h1>
+            <p class="text-yellow-400 text-lg font-bold leading-normal pb-3 pt-1 px-4 text-center italic">May Your Nation Lead You to Glory</p>
+            <p class="text-white text-base font-normal leading-normal px-4 text-center opacity-80">Support Your Team, Win Big!</p>
+        </div>
+        <div class="w-full max-w-md px-4 pb-8">
+            <div class="flex flex-col gap-3">
+                <a href="{{ url_for('signup') }}" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 bg-primary text-white text-base font-bold leading-normal tracking-[0.015em] w-full no-underline">
+                    <span class="truncate">Sign Up</span>
+                </a>
+                <a href="{{ url_for('login') }}" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 bg-[#233648] text-white text-base font-bold leading-normal tracking-[0.015em] w-full no-underline">
+                    <span class="truncate">Log In</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- Footer with Copyright and Built by -->
+        <div class="w-full border-t border-gray-700 py-6 px-4">
+            <div class="max-w-md mx-auto text-center">
+                <div class="mb-4">
+                    <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-12 h-12 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-lg">
+                    <p class="text-gray-400 text-sm">Built by <span class="text-primary font-bold">MARK.ORG</span></p>
+                </div>
+                <p class="text-gray-500 text-xs">© 2025 WC 2026. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

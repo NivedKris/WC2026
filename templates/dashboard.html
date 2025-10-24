@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - WC 2026{% endblock %}
+
+{% block content %}
+<style>
+.firework {
+    position: fixed;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+@keyframes firework {
+    0% { transform: translate(var(--x), var(--y)); width: 5px; height: 5px; opacity: 1; }
+    50% { width: 3px; height: 3px; }
+    100% { width: 150px; height: 150px; opacity: 0; }
+}
+
+.firework::before, .firework::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    opacity: 0;
+    animation: firework-particle 1s ease-out infinite;
+}
+
+@keyframes firework-particle {
+    0% { transform: translate(0, 0); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)); opacity: 0; }
+}
+
+.winner-celebration {
+    background: linear-gradient(45deg, #ffd700, #ff6b6b, #4ecdc4, #45b7d1);
+    background-size: 400% 400%;
+    animation: gradient 3s ease infinite;
+}
+
+@keyframes gradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.trophy-bounce {
+    animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+}
+</style>
+
+{% if winning_nation %}
+<!-- WINNER DECLARED - Special Dashboard -->
+<div class="relative flex h-screen w-full flex-col group/design-root overflow-hidden bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600">
+    <!-- Header -->
+    <div class="flex items-center bg-black/20 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-10">
+        <div class="flex size-12 shrink-0 items-center">
+            <a href="{{ url_for('user_profile') }}">
+                <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="Avatar">
+            </a>
+        </div>
+        <h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">World Cup 2026</h2>
+        <div class="flex w-12 items-center justify-end">
+            <a href="{{ url_for('logout') }}" class="flex cursor-pointer items-center justify-center text-white">
+                <span class="material-symbols-outlined">logout</span>
+            </a>
+        </div>
+    </div>
+    
+    <!-- Main Winner Display -->
+    <div class="flex-1 flex flex-col items-center justify-center px-4 text-center">
+        <div class="trophy-bounce mb-6">
+            <span class="material-symbols-outlined text-9xl text-white drop-shadow-2xl">emoji_events</span>
+        </div>
+        
+        <h1 class="text-5xl font-black text-white mb-4 drop-shadow-lg">WORLD CUP CHAMPIONS!</h1>
+        
+        <!-- Winner Nation with Flag -->
+        {% for nation in top_nations %}
+            {% if nation[0] == winning_nation %}
+        <div class="bg-white/20 backdrop-blur-md rounded-3xl p-8 mb-6 border-4 border-white shadow-2xl">
+            <div class="w-32 h-24 mx-auto mb-4 bg-center bg-no-repeat bg-cover rounded-lg shadow-xl" 
+                 style='background-image: url("{{ nation[1] }}");'></div>
+            <h2 class="text-4xl font-black text-white">{{ winning_nation }}</h2>
+        </div>
+            {% endif %}
+        {% endfor %}
+        
+        <!-- User Result -->
+        {% if session.nation == winning_nation %}
+        <div class="bg-green-500/30 backdrop-blur-md border-4 border-green-300 rounded-2xl p-6 mb-6 max-w-md">
+            <div class="flex items-center justify-center gap-3 mb-3">
+                <span class="material-symbols-outlined text-4xl text-white">celebration</span>
+                <h3 class="text-2xl font-bold text-white">CONGRATULATIONS!</h3>
+                <span class="material-symbols-outlined text-4xl text-white">celebration</span>
+            </div>
+            <p class="text-white text-lg font-medium mb-4">
+                You supported the winning nation! 🎉
+            </p>
+            
+            {% if pending_claim %}
+            <div class="bg-yellow-400/30 border-2 border-yellow-200 rounded-xl p-4">
+                <div class="flex items-center gap-2 justify-center">
+                    <span class="material-symbols-outlined text-white">pending</span>
+                    <span class="text-white font-bold">Reward Claim Pending Approval</span>
+                </div>
+            </div>
+            {% elif can_claim_reward %}
+            <a href="{{ url_for('claim_reward') }}" class="inline-flex items-center gap-2 bg-white text-green-600 font-bold py-3 px-8 rounded-xl no-underline hover:bg-gray-100 transition-colors shadow-lg text-lg">
+                <span class="material-symbols-outlined text-2xl">redeem</span>
+                Claim ₹100 Reward
+            </a>
+            {% else %}
+            <div class="bg-white/20 rounded-xl p-4">
+                <span class="text-white font-bold">Reward Claimed ✓</span>
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="bg-gray-700/50 backdrop-blur-md border-2 border-gray-500 rounded-2xl p-6 mb-6 max-w-md">
+            <h3 class="text-xl font-bold text-white mb-2">Better Luck Next Time!</h3>
+            <p class="text-white/90">
+                You supported <strong>{{ session.nation }}</strong><br>
+                The winner was <strong>{{ winning_nation }}</strong>
+            </p>
+        </div>
+        {% endif %}
+        
+        <!-- Next World Cup -->
+        <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 mt-4">
+            <p class="text-white text-sm font-medium">Thank you for your support!</p>
+            <p class="text-white/80 text-xs mt-1">See you at the next World Cup 2030! 🌍⚽</p>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- NORMAL DASHBOARD - Before Winner Declaration -->
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+    <div class="flex size-12 shrink-0 items-center">
+        <a href="{{ url_for('user_profile') }}">
+            <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="Avatar">
+        </a>
+    </div>
+    <h2 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Dashboard</h2>
+    <div class="flex w-12 items-center justify-end">
+        <a href="{{ url_for('logout') }}" class="flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 bg-transparent text-black dark:text-white gap-2 text-base font-bold leading-normal tracking-[0.015em] min-w-0 p-0">
+            <span class="material-symbols-outlined text-black dark:text-white">logout</span>
+        </a>
+    </div>
+</div>
+    
+    <!-- Monthly Payment Section -->
+    <div class="px-4 py-3">
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Monthly Support</h3>
+                <span class="text-2xl font-bold text-primary">₹50</span>
+            </div>
+            
+            <p class="text-slate-600 dark:text-slate-400 text-sm mb-4">
+                Support your nation for <strong>{{ current_month }}</strong>. Pay ₹50 to show your support this month.
+            </p>
+            
+            {% if current_payment %}
+                {% if current_payment[0] == 'completed' %}
+                <div class="bg-green-100 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-green-500">check_circle</span>
+                        <span class="text-green-800 dark:text-green-300 font-medium">Payment Completed for {{ current_month }}</span>
+                    </div>
+                </div>
+                {% elif current_payment[0] == 'pending' %}
+                <div class="bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-yellow-500">pending</span>
+                        <span class="text-yellow-800 dark:text-yellow-300 font-medium">Payment Pending Approval for {{ current_month }}</span>
+                    </div>
+                </div>
+                {% endif %}
+            {% else %}
+            <a href="{{ url_for('pay_monthly') }}" onclick="setButtonLoading(this); return true;" class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary h-12 text-white font-bold text-base leading-normal tracking-[0.015em] no-underline">
+                <span class="material-symbols-outlined">payments</span>
+                <span>Pay ₹50 for {{ current_month }}</span>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Missed Payments Warning -->
+    {% if missed_months %}
+    <div class="px-4 py-3">
+        <div class="bg-red-100 dark:bg-red-900/30 border-2 border-red-500 rounded-xl p-4">
+            <div class="flex items-start gap-3 mb-3">
+                <span class="material-symbols-outlined text-red-600 dark:text-red-400 text-2xl">warning</span>
+                <div class="flex-1">
+                    <h3 class="text-red-800 dark:text-red-300 font-bold text-lg mb-1">Missed Payments Detected!</h3>
+                    <p class="text-red-700 dark:text-red-400 text-sm">
+                        You have <strong>{{ missed_months|length }} unpaid month(s)</strong>. Pay now to catch up and stay competitive!
+                    </p>
+                </div>
+            </div>
+            
+            <div class="space-y-2">
+                {% for month in missed_months %}
+                <div class="bg-white dark:bg-slate-800 rounded-lg p-3 flex items-center justify-between border border-red-300 dark:border-red-700">
+                    <div>
+                        <p class="text-slate-800 dark:text-white font-medium">{{ month }}</p>
+                        <p class="text-slate-600 dark:text-slate-400 text-xs">Backpayment Available</p>
+                    </div>
+                    <a href="{{ url_for('pay_monthly', month=month) }}" onclick="setButtonLoading(this); return true;" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm no-underline flex items-center gap-1">
+                        <span class="material-symbols-outlined text-base">payment</span>
+                        Pay ₹50
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    {% if not session.nation %}
+    <div class="px-4 py-3">
+        <a href="{{ url_for('select_nation') }}" class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary h-12 text-white font-bold text-base leading-normal tracking-[0.015em] no-underline">
+            <span class="material-symbols-outlined">flag</span>
+            <span>Select Your Nation</span>
+        </a>
+    </div>
+    {% else %}
+    <div class="px-4 py-3">
+        <div class="bg-primary/10 border border-primary rounded-xl p-4 text-center">
+            <p class="text-primary font-bold text-lg">You're supporting: {{ session.nation }}</p>
+            <p class="text-gray-600 dark:text-gray-400 text-sm mt-1">Your nation choice is permanent and cannot be changed</p>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- User Stats Section -->
+    {% if session.nation %}
+    <div class="px-4 py-3">
+        <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] mb-3">Your Support Stats</h3>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="bg-white dark:bg-slate-800 rounded-xl p-4 text-center border border-slate-200 dark:border-slate-700">
+                <p class="text-2xl font-bold text-primary">{{ user_stats[0] }}</p>
+                <p class="text-slate-600 dark:text-slate-400 text-sm">Months Paid</p>
+            </div>
+            <div class="bg-white dark:bg-slate-800 rounded-xl p-4 text-center border border-slate-200 dark:border-slate-700">
+                <p class="text-2xl font-bold text-primary">₹{{ user_stats[1] }}</p>
+                <p class="text-slate-600 dark:text-slate-400 text-sm">Total Contributed</p>
+            </div>
+            <div class="bg-white dark:bg-slate-800 rounded-xl p-4 text-center border border-slate-200 dark:border-slate-700">
+                <p class="text-2xl font-bold text-primary">
+                    {% if user_stats[0] >= 3 %}
+                    <span class="bg-yellow-500 text-black px-2 py-1 rounded-full text-xs">Premium</span>
+                    {% else %}
+                    {{ 3 - user_stats[0] }}
+                    {% endif %}
+                </p>
+                <p class="text-slate-600 dark:text-slate-400 text-sm">
+                    {% if user_stats[0] >= 3 %}
+                    Status
+                    {% else %}
+                    Payments to Premium
+                    {% endif %}
+                </p>
+            </div>
+            <div class="bg-white dark:bg-slate-800 rounded-xl p-4 text-center border border-slate-200 dark:border-slate-700">
+                <p class="text-2xl font-bold text-primary">{{ months_until_wc|length }}</p>
+                <p class="text-slate-600 dark:text-slate-400 text-sm">Months Until WC</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Payment Calendar/Timeline -->
+    <div class="px-4 py-3">
+        <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] mb-3">Payment Schedule</h3>
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+            <div class="space-y-2 max-h-80 overflow-y-auto">
+                {% for month_data in payment_calendar %}
+                <div class="flex items-center justify-between p-3 rounded-lg
+                    {% if month_data.status == 'completed' %}
+                        bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700
+                    {% elif month_data.status == 'pending' %}
+                        bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700
+                    {% elif month_data.is_past %}
+                        bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700
+                    {% elif month_data.is_current %}
+                        bg-blue-100 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700
+                    {% else %}
+                        bg-gray-100 dark:bg-gray-900/20 border border-gray-300 dark:border-gray-700
+                    {% endif %}">
+                    
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined 
+                            {% if month_data.status == 'completed' %}text-green-600 dark:text-green-400
+                            {% elif month_data.status == 'pending' %}text-yellow-600 dark:text-yellow-400
+                            {% elif month_data.is_past %}text-red-600 dark:text-red-400
+                            {% elif month_data.is_current %}text-blue-600 dark:text-blue-400
+                            {% else %}text-gray-600 dark:text-gray-400
+                            {% endif %}">
+                            {% if month_data.status == 'completed' %}check_circle
+                            {% elif month_data.status == 'pending' %}pending
+                            {% elif month_data.is_past %}cancel
+                            {% else %}schedule
+                            {% endif %}
+                        </span>
+                        <div>
+                            <p class="font-medium text-slate-800 dark:text-white">
+                                {{ month_data.month }}
+                                {% if month_data.is_current %}
+                                <span class="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full ml-2">Current</span>
+                                {% endif %}
+                            </p>
+                            <p class="text-xs 
+                                {% if month_data.status == 'completed' %}text-green-700 dark:text-green-400
+                                {% elif month_data.status == 'pending' %}text-yellow-700 dark:text-yellow-400
+                                {% elif month_data.is_past %}text-red-700 dark:text-red-400
+                                {% else %}text-gray-600 dark:text-gray-400
+                                {% endif %}">
+                                {% if month_data.status == 'completed' %}Paid ✓
+                                {% elif month_data.status == 'pending' %}Pending Approval
+                                {% elif month_data.is_past %}Missed
+                                {% elif month_data.is_current %}Pay Now
+                                {% else %}Upcoming
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    {% if month_data.status not in ['completed', 'pending'] %}
+                    <a href="{{ url_for('pay_monthly', month=month_data.month) }}" onclick="setButtonLoading(this); return true;" class="
+                        {% if month_data.is_past %}
+                        bg-red-600 hover:bg-red-700
+                        {% elif month_data.is_current %}
+                        bg-primary hover:bg-blue-700
+                        {% else %}
+                        bg-gray-400 hover:bg-gray-500
+                        {% endif %}
+                        text-white px-3 py-1.5 rounded-lg font-bold text-xs no-underline flex items-center gap-1">
+                        <span class="material-symbols-outlined text-sm">payment</span>
+                        Pay ₹50
+                    </a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <h1 class="text-black dark:text-white tracking-light text-[32px] font-bold leading-tight px-4 text-center pb-3 pt-6">Countdown to World Cup 2026</h1>
+    
+    <div class="flex gap-4 py-6 px-4">
+        <div class="flex grow basis-0 flex-col items-stretch gap-4">
+            <div class="flex h-14 grow items-center justify-center rounded-xl px-3 bg-zinc-200 dark:bg-zinc-800">
+                <p id="days" class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">{{ time_left.days }}</p>
+            </div>
+            <div class="flex items-center justify-center"><p class="text-black dark:text-white text-sm font-normal leading-normal">Days</p></div>
+        </div>
+        <div class="flex grow basis-0 flex-col items-stretch gap-4">
+            <div class="flex h-14 grow items-center justify-center rounded-xl px-3 bg-zinc-200 dark:bg-zinc-800">
+                <p id="hours" class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">{{ (time_left.seconds // 3600) % 24 }}</p>
+            </div>
+            <div class="flex items-center justify-center"><p class="text-black dark:text-white text-sm font-normal leading-normal">Hours</p></div>
+        </div>
+        <div class="flex grow basis-0 flex-col items-stretch gap-4">
+            <div class="flex h-14 grow items-center justify-center rounded-xl px-3 bg-zinc-200 dark:bg-zinc-800">
+                <p id="minutes" class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">{{ (time_left.seconds // 60) % 60 }}</p>
+            </div>
+            <div class="flex items-center justify-center"><p class="text-black dark:text-white text-sm font-normal leading-normal">Minutes</p></div>
+        </div>
+        <div class="flex grow basis-0 flex-col items-stretch gap-4">
+            <div class="flex h-14 grow items-center justify-center rounded-xl px-3 bg-zinc-200 dark:bg-zinc-800">
+                <p id="seconds" class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">{{ time_left.seconds % 60 }}</p>
+            </div>
+            <div class="flex items-center justify-center"><p class="text-black dark:text-white text-sm font-normal leading-normal">Seconds</p></div>
+        </div>
+    </div>
+    
+    <!-- Payment History -->
+    {% if payment_history %}
+    <div class="px-4 py-3">
+        <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] mb-3">Payment History</h3>
+        <div class="space-y-2">
+            {% for payment in payment_history %}
+            <div class="bg-white dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-slate-800 dark:text-white font-medium">{{ payment[0] }}</p>
+                        <p class="text-slate-600 dark:text-slate-400 text-sm">₹{{ payment[1] }}</p>
+                    </div>
+                    <div>
+                        {% if payment[2] == 'completed' %}
+                        <span class="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold">Paid</span>
+                        {% elif payment[2] == 'pending' %}
+                        <span class="bg-yellow-500 text-black px-2 py-1 rounded-full text-xs font-bold">Pending</span>
+                        {% else %}
+                        <span class="bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold">Rejected</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-4">See What Nations Others Are Supporting</h3>
+    
+    <div class="flex w-full overflow-x-auto px-4 py-3">
+        <div class="flex min-h-min flex-row items-start justify-start gap-5">
+            {% for nation in top_nations %}
+            <div class="flex flex-1 flex-col justify-center gap-2 w-16 text-center">
+                <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-full border-2 border-gray-300" 
+                     style='background-image: url("{{ nation[1] }}"); background-size: cover; background-position: center;'></div>
+                <p class="text-black dark:text-white text-[13px] font-normal leading-normal">{{ nation[0] }}</p>
+                <p class="text-gray-500 text-xs">{{ nation[2] }} supporters</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-4">Top Supporters</h3>
+    
+    <div class="flex flex-col gap-2 px-4 py-3">
+        {% for user in leaderboard %}
+        <div class="flex items-center {% if user[3] >= 3 %}bg-yellow-100 dark:bg-yellow-900/20{% else %}bg-zinc-200 dark:bg-zinc-800{% endif %} p-3 rounded-lg">
+            <div class="w-8 text-center text-black dark:text-white font-bold">{{ loop.index }}</div>
+            <div class="flex-1 flex items-center gap-3 ml-3">
+                <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + user[2]) if user[2] != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="{{ user[0] }}">
+                <span class="text-black dark:text-white">{{ user[0] }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-black dark:text-white text-sm">{{ user[1] }}</span>
+            </div>
+            <div class="w-20 text-right">
+                <span class="text-black dark:text-white text-sm font-bold">{{ user[3] }} months</span>
+                {% if user[3] >= 3 %}
+                <span class="bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded-full block mt-1">Premium</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer-branding mt-8 pt-4 border-t border-slate-700">
+        <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
+        <p class="text-slate-500 text-xs">Built by <span class="text-primary">MARK.ORG</span> | © 2025 WC 2026</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Fireworks Script for Winners -->
+{% if winning_nation and session.nation == winning_nation %}
+<script>
+function createFirework() {
+    const firework = document.createElement('div');
+    firework.className = 'firework';
+    
+    const x = Math.random() * window.innerWidth;
+    const y = Math.random() * window.innerHeight;
+    const color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+    
+    firework.style.cssText = `
+        --x: ${x}px;
+        --y: ${y}px;
+        background-color: ${color};
+        animation: firework 1s ease-out forwards;
+    `;
+    
+    // Create particles
+    for (let i = 0; i < 12; i++) {
+        const particle = document.createElement('div');
+        const angle = (i / 12) * Math.PI * 2;
+        const distance = 50 + Math.random() * 50;
+        const dx = Math.cos(angle) * distance;
+        const dy = Math.sin(angle) * distance;
+        
+        particle.style.cssText = `
+            --dx: ${dx}px;
+            --dy: ${dy}px;
+            background-color: ${color};
+            animation: firework-particle 1s ease-out forwards;
+            animation-delay: ${Math.random() * 0.2}s;
+        `;
+        firework.appendChild(particle);
+    }
+    
+    document.body.appendChild(firework);
+    
+    setTimeout(() => {
+        firework.remove();
+    }, 1000);
+}
+
+// Start fireworks
+// Initial fireworks
+for (let i = 0; i < 10; i++) {
+    setTimeout(() => createFirework(), i * 200);
+}
+
+// Continuous fireworks
+setInterval(() => {
+    if (Math.random() < 0.3) { // 30% chance every second
+        createFirework();
+    }
+}, 1000);
+</script>
+{% endif %}
+
+<!-- Countdown Timer Script (Only for normal dashboard) -->
+{% if not winning_nation %}
+<script>
+// Live countdown timer
+function updateCountdown() {
+    const worldCupDate = new Date('2026-07-19T00:00:00').getTime();
+    const now = new Date().getTime();
+    const timeLeft = worldCupDate - now;
+    
+    if (timeLeft > 0) {
+        const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+        
+        document.getElementById('days').textContent = days;
+        document.getElementById('hours').textContent = hours.toString().padStart(2, '0');
+        document.getElementById('minutes').textContent = minutes.toString().padStart(2, '0');
+        document.getElementById('seconds').textContent = seconds.toString().padStart(2, '0');
+    }
+}
+
+setInterval(updateCountdown, 1000);
+updateCountdown();
+</script>
+{% endif %}
+{% endblock %}

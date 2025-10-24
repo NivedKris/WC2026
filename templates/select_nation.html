@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Select Nation - World Cup Fan Zone{% endblock %}
+
+{% block content %}
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+        <a href="{{ url_for('dashboard') }}" class="text-black dark:text-white flex size-12 shrink-0 items-center">
+            <span class="material-symbols-outlined text-2xl">arrow_back</span>
+        </a>
+        <h2 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Select Your Nation</h2>
+    </div>
+    
+    <p class="text-gray-600 dark:text-gray-300 text-base font-normal leading-normal pb-3 pt-1 px-4">
+        Choose your favorite team to support throughout the tournament. <strong class="text-primary">This choice is permanent and cannot be changed later.</strong>
+    </p>
+    
+    <div class="px-4 py-3">
+        <label class="flex flex-col min-w-40 h-12 w-full">
+            <div class="flex w-full flex-1 items-stretch rounded-xl h-full">
+                <div class="text-gray-400 dark:text-gray-500 flex border-none bg-gray-200 dark:bg-[#233648] items-center justify-center pl-4 rounded-l-xl border-r-0">
+                    <span class="material-symbols-outlined">search</span>
+                </div>
+                <input id="searchInput" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-r-xl text-black dark:text-white focus:outline-0 focus:ring-0 border-none bg-gray-200 dark:bg-[#233648] focus:border-none h-full placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 pl-2 text-base font-normal leading-normal" placeholder="Search for a nation" onkeyup="filterNations()">
+            </div>
+        </label>
+    </div>
+    
+    <form method="POST" id="nationForm">
+        <input type="hidden" name="nation_id" id="selectedNationId">
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(158px,1fr))] gap-3 p-4" id="nationsGrid">
+            {% for nation in nations %}
+            <div class="nation-card relative bg-cover bg-center flex flex-col gap-3 rounded-xl justify-end p-4 aspect-[4/3] cursor-pointer border-2 border-transparent hover:border-primary transition-all"
+                 data-name="{{ nation[1].lower() }}"
+                 data-id="{{ nation[0] }}"
+                 onclick="selectNation({{ nation[0] }}, '{{ nation[1] }}', this)"
+                 style="background-image: url('{{ nation[2] }}'); background-size: cover; background-position: center;">
+                <div class="absolute inset-0 bg-black/30 rounded-xl"></div>
+                <div class="absolute top-2 right-2 bg-primary rounded-full p-1 hidden checkmark">
+                    <span class="material-symbols-outlined text-white text-base">check</span>
+                </div>
+                <p class="text-white text-base font-bold leading-tight w-4/5 line-clamp-2 z-10">{{ nation[1] }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="flex px-4 py-3 justify-center sticky bottom-0 bg-background-light dark:bg-background-dark">
+            <button type="button" onclick="showConfirmation()" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 flex-1 bg-primary text-white text-base font-bold leading-normal tracking-[0.015em]">
+                <span class="truncate">Select Nation</span>
+            </button>
+        </div>
+    </form>
+    
+    <!-- Confirmation Modal -->
+    <div id="confirmationModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-20 hidden">
+        <div class="bg-background-light dark:bg-background-dark rounded-xl p-6 max-w-sm w-full flex flex-col gap-4">
+            <h3 class="text-lg font-bold text-black dark:text-white">Confirm Your Selection</h3>
+            <p id="confirmationText" class="text-gray-600 dark:text-gray-300">Are you sure you want to select this nation? <strong class="text-primary">This choice is permanent and cannot be changed later.</strong></p>
+            <div class="flex gap-3 mt-2">
+                <button type="button" onclick="hideConfirmation()" class="flex-1 flex items-center justify-center rounded-lg h-11 px-4 bg-gray-200 dark:bg-[#233648] text-black dark:text-white font-bold">Cancel</button>
+                <button type="button" onclick="submitForm()" class="flex-1 flex items-center justify-center rounded-lg h-11 px-4 bg-primary text-white font-bold">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedNationId = null;
+let selectedNationName = null;
+
+function filterNations() {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const nations = document.querySelectorAll('.nation-card');
+    
+    nations.forEach(nation => {
+        const nationName = nation.getAttribute('data-name');
+        if (nationName.includes(searchTerm)) {
+            nation.style.display = 'flex';
+        } else {
+            nation.style.display = 'none';
+        }
+    });
+}
+
+function selectNation(nationId, nationName, element) {
+    // Remove selection from all nations
+    document.querySelectorAll('.nation-card').forEach(card => {
+        card.classList.remove('border-primary');
+        card.querySelector('.checkmark').classList.add('hidden');
+    });
+    
+    // Add selection to clicked nation
+    element.classList.add('border-primary');
+    element.querySelector('.checkmark').classList.remove('hidden');
+    
+    selectedNationId = nationId;
+    selectedNationName = nationName;
+    
+    // Update the hidden input
+    document.getElementById('selectedNationId').value = nationId;
+}
+
+function showConfirmation() {
+    if (!selectedNationId) {
+        alert('Please select a nation first');
+        return;
+    }
+    
+    document.getElementById('confirmationText').innerHTML = 
+        `Are you sure you want to select <strong>${selectedNationName}</strong>? <strong class="text-primary">This choice is permanent and cannot be changed later.</strong>`;
+    document.getElementById('confirmationModal').classList.remove('hidden');
+}
+
+function hideConfirmation() {
+    document.getElementById('confirmationModal').classList.add('hidden');
+}
+
+function submitForm() {
+    if (selectedNationId) {
+        const confirmBtn = document.querySelector('#confirmationModal button[onclick="submitForm()"]');
+        setButtonLoading(confirmBtn, true);
+        document.getElementById('nationForm').submit();
+    }
+}
+
+// Auto-select if user already has a nation (shouldn't happen with the redirect, but just in case)
+{% if session.nation %}
+window.addEventListener('load', function() {
+    // Redirect to dashboard if user already has a nation
+    window.location.href = "{{ url_for('dashboard') }}";
+});
+{% endif %}
+</script>
+{% endblock %}

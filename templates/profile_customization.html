@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Customize Profile - World Cup Fan Zone{% endblock %}
+
+{% block content %}
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+        <a href="{{ url_for('user_profile') }}" class="text-black dark:text-white flex size-12 shrink-0 items-center">
+            <span class="material-symbols-outlined text-2xl">arrow_back</span>
+        </a>
+        <h2 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Customize Profile</h2>
+        <div class="w-12"></div>
+    </div>
+
+    <div class="flex-1 px-4 py-6">
+        <!-- Avatar Selection -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 mb-6">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Choose Avatar</h3>
+            <div class="grid grid-cols-5 gap-3 max-h-96 overflow-y-auto">
+                {% for i in range(1, 26) %}
+                <div class="avatar-option cursor-pointer transform hover:scale-105 transition-transform">
+                    <img src="{{ url_for('static', filename='avatars/avatar' ~ i ~ '.png') }}" 
+                         alt="Avatar {{ i }}" 
+                         class="w-14 h-14 rounded-full border-2 border-transparent hover:border-primary object-cover"
+                         onerror="this.src='{{ url_for('static', filename='avatars/avatar1.png') }}'"
+                         onclick="selectAvatar('avatar{{ i }}.png')">
+                </div>
+                {% endfor %}
+            </div>
+            <p class="text-slate-500 text-xs mt-3">Select from 25 unique avatars</p>
+        </div>
+
+        <!-- Preview Section -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Preview</h3>
+            <div class="flex items-center gap-4 p-4 bg-gray-100 dark:bg-slate-700 rounded-lg">
+                <img id="preview-avatar" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url and session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" 
+                     onerror="this.src='{{ url_for('static', filename='avatars/avatar1.png') }}'"
+                     alt="Preview Avatar" class="w-16 h-16 rounded-full">
+                <div>
+                    <p class="text-slate-800 dark:text-white font-bold">{{ session.username or 'User' }}</p>
+                    <p class="text-slate-600 dark:text-slate-400 text-sm">Supports: {{ session.nation or 'No nation selected' }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="mt-6">
+            <button onclick="saveProfile()" class="w-full bg-primary text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined">save</span>
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedAvatar = '{{ session.avatar_url or "avatar1.png" }}';
+
+function selectAvatar(avatarFilename) {
+    selectedAvatar = avatarFilename;
+    document.getElementById('preview-avatar').src = "{{ url_for('static', filename='avatars/') }}" + avatarFilename;
+    
+    // Update selection
+    document.querySelectorAll('.avatar-option img').forEach(img => {
+        img.classList.remove('border-primary');
+        img.classList.add('border-transparent');
+    });
+    event.target.classList.remove('border-transparent');
+    event.target.classList.add('border-primary');
+}
+
+function saveProfile() {
+    const saveBtn = event.target;
+    setButtonLoading(saveBtn, true);
+    
+    fetch('/update-profile', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `avatar_url=${encodeURIComponent(selectedAvatar)}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        setButtonLoading(saveBtn, false);
+        if (data.success) {
+            alert('Profile updated successfully!');
+            // Redirect back to profile
+            setTimeout(() => window.location.href = "{{ url_for('user_profile') }}", 1000);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        setButtonLoading(saveBtn, false);
+        alert('Error updating profile');
+    });
+}
+
+// Initialize selections on load
+document.addEventListener('DOMContentLoaded', function() {
+    // Select current avatar
+    const currentAvatar = '{{ session.avatar_url or "avatar1.png" }}';
+    document.querySelectorAll('.avatar-option img').forEach(img => {
+        const avatarSrc = img.src.split('/').pop();
+        if (avatarSrc === currentAvatar) {
+            img.classList.remove('border-transparent');
+            img.classList.add('border-primary');
+        }
+    });
+});
+</script>
+
+{% endblock %}

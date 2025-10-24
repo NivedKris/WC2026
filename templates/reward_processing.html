@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Reward Claim Processing - World Cup Fan Zone{% endblock %}
+
+{% block content %}
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between">
+        <div class="size-12 shrink-0"></div>
+        <h2 class="text-slate-800 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Reward Claim</h2>
+        <div class="size-12 shrink-0"></div>
+    </div>
+
+    <div class="flex flex-col items-center justify-center flex-1 px-4 py-8 text-center">
+        <div class="relative mb-8 flex h-40 w-40 items-center justify-center">
+            <div class="absolute inset-0 animate-spin rounded-full border-4 border-yellow-300 border-t-yellow-500"></div>
+            <span class="material-symbols-outlined text-6xl text-yellow-500">celebration</span>
+        </div>
+        
+        <h1 class="text-slate-800 dark:text-white tracking-light text-[32px] font-bold leading-tight pb-3 pt-6">Reward Claim Submitted!</h1>
+        
+        <p class="text-slate-600 dark:text-slate-400 text-base font-normal leading-normal pb-3 pt-1 max-w-md">
+            Your reward claim for supporting <strong>{{ winning_nation }}</strong> has been submitted! 
+            You're claiming <strong>₹100</strong> as a reward for backing the winning nation.
+        </p>
+
+        <div class="mt-8 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 max-w-md">
+            <p class="text-yellow-800 dark:text-yellow-300 text-sm">
+                <span class="material-symbols-outlined align-middle text-base">info</span>
+                Your claim is pending admin approval. You'll be notified once it's approved.
+            </p>
+        </div>
+
+        <div class="mt-8 w-full max-w-sm">
+            <a href="{{ url_for('dashboard') }}" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 flex-1 bg-yellow-500 text-white text-base font-bold leading-normal tracking-[0.015em] no-underline">
+                <span class="truncate">Return to Dashboard</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

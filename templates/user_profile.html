@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile - WC 2026{% endblock %}
+
+{% block content %}
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+        <a href="{{ url_for('dashboard') }}" class="text-black dark:text-white flex size-12 shrink-0 items-center">
+            <span class="material-symbols-outlined text-2xl">arrow_back</span>
+        </a>
+        <h2 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">My Profile</h2>
+        <div class="w-12"></div>
+    </div>
+
+    <div class="flex-1 px-4 py-6">
+        <!-- User Info Card -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 mb-6">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="relative">
+                    <img src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" 
+                         alt="Avatar" class="w-16 h-16 rounded-full">
+                    <a href="{{ url_for('profile_customization') }}" class="absolute -bottom-1 -right-1 bg-primary text-white p-1 rounded-full">
+                        <span class="material-symbols-outlined text-sm">edit</span>
+                    </a>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-slate-800 dark:text-white">{{ user_data[0] }}</h3>
+                    <p class="text-slate-600 dark:text-slate-400 text-sm">{{ user_data[1] }}</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                    <p class="text-slate-500 dark:text-slate-400">Member Since</p>
+                    <p class="text-slate-800 dark:text-white font-medium">{{ user_data[4][:10] }}</p>
+                </div>
+                <div>
+                    <p class="text-slate-500 dark:text-slate-400">Status</p>
+                    <p class="text-slate-800 dark:text-white font-medium">
+                        {% if user_data[3] %}
+                        <span class="bg-yellow-500 text-black px-2 py-1 rounded-full text-xs font-bold">Premium</span>
+                        {% else %}
+                        <span class="bg-slate-500 text-white px-2 py-1 rounded-full text-xs">Standard</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Customize Profile Button -->
+            <div class="mt-4">
+                <a href="{{ url_for('profile_customization') }}" class="flex items-center justify-center gap-2 w-full bg-primary text-white font-bold py-2 px-4 rounded-lg no-underline">
+                    <span class="material-symbols-outlined">palette</span>
+                    Customize Profile
+                </a>
+            </div>
+        </div>
+
+        <!-- Nation Card -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 mb-6">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">My Nation</h3>
+            <div class="flex items-center gap-4">
+                {% if nation_flag %}
+                <img src="{{ nation_flag }}" alt="{{ user_data[2] }} flag" class="w-16 h-12 rounded border object-cover">
+                {% else %}
+                <div class="w-16 h-12 bg-slate-300 dark:bg-slate-600 rounded border flex items-center justify-center">
+                    <span class="text-xs text-slate-600 dark:text-slate-400">No flag</span>
+                </div>
+                {% endif %}
+                <div>
+                    <p class="text-slate-800 dark:text-white font-bold text-lg">{{ user_data[2] or 'No nation selected' }}</p>
+                    <p class="text-slate-600 dark:text-slate-400 text-sm">Your supported team</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Card -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">My Stats</h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="text-center p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <p class="text-2xl font-bold text-primary">{{ user_data[5] or 0 }}</p>
+                    <p class="text-slate-600 dark:text-slate-400 text-sm">Months Paid</p>
+                </div>
+                <div class="text-center p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <p class="text-2xl font-bold text-primary">₹{{ user_data[6] or 0 }}</p>
+                    <p class="text-slate-600 dark:text-slate-400 text-sm">Total Contributed</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment History -->
+        {% if payment_history %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 mt-6">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Payment History</h3>
+            <div class="space-y-3">
+                {% for payment in payment_history %}
+                <div class="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                    <div>
+                        <p class="text-slate-800 dark:text-white font-medium">{{ payment[0] }}</p>
+                        <p class="text-slate-600 dark:text-slate-400 text-sm">₹{{ payment[1] }}</p>
+                    </div>
+                    <div>
+                        {% if payment[2] == 'completed' %}
+                        <span class="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold">Paid</span>
+                        {% elif payment[2] == 'pending' %}
+                        <span class="bg-yellow-500 text-black px-2 py-1 rounded-full text-xs font-bold">Pending</span>
+                        {% else %}
+                        <span class="bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold">Rejected</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Footer -->
+        <div class="footer-branding mt-8 pt-4 border-t border-slate-700">
+            <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
+            <p class="text-slate-500 text-xs">Built by <span class="text-primary">MARK.ORG</span> | © 2025 WC 2026</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
