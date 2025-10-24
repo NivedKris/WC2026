@@ -4,7 +4,14 @@
 
 {% block content %}
 <div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
-    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+    <!-- Video Background -->
+    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+        <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
+    </video>
+    
+    <!-- Content Layer -->
+    <div class="relative z-10">
+    <div class="flex items-center bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-20">
         <a href="{{ url_for('dashboard') }}" class="text-black dark:text-white flex size-12 shrink-0 items-center">
             <span class="material-symbols-outlined text-2xl">arrow_back</span>
         </a>
@@ -33,7 +40,7 @@
             <div class="nation-card relative bg-cover bg-center flex flex-col gap-3 rounded-xl justify-end p-4 aspect-[4/3] cursor-pointer border-2 border-transparent hover:border-primary transition-all"
                  data-name="{{ nation[1].lower() }}"
                  data-id="{{ nation[0] }}"
-                 onclick="selectNation({{ nation[0] }}, '{{ nation[1] }}', this)"
+                 onclick="selectNation('{{ nation[0] }}', '{{ nation[1] }}', this)"
                  style="background-image: url('{{ nation[2] }}'); background-size: cover; background-position: center;">
                 <div class="absolute inset-0 bg-black/30 rounded-xl"></div>
                 <div class="absolute top-2 right-2 bg-primary rounded-full p-1 hidden checkmark">
@@ -52,8 +59,8 @@
     </form>
     
     <!-- Confirmation Modal -->
-    <div id="confirmationModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-20 hidden">
-        <div class="bg-background-light dark:bg-background-dark rounded-xl p-6 max-w-sm w-full flex flex-col gap-4">
+    <div id="confirmationModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-20 hidden">
+        <div class="bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md rounded-xl p-6 max-w-sm w-full flex flex-col gap-4">
             <h3 class="text-lg font-bold text-black dark:text-white">Confirm Your Selection</h3>
             <p id="confirmationText" class="text-gray-600 dark:text-gray-300">Are you sure you want to select this nation? <strong class="text-primary">This choice is permanent and cannot be changed later.</strong></p>
             <div class="flex gap-3 mt-2">
@@ -131,4 +138,6 @@ window.addEventListener('load', function() {
 });
 {% endif %}
 </script>
+</div> <!-- Close content layer -->
+</div>
 {% endblock %}

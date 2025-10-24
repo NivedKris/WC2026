@@ -3,12 +3,22 @@
 {% block title %}WC 2026 - May Your Nation Lead You to Glory{% endblock %}
 
 {% block content %}
-<div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
-    <div class="flex-grow flex flex-col justify-center items-center px-4">
+<!-- Video Background Container -->
+<div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-hidden">
+    <!-- Video Background -->
+    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0">
+        <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
+    </video>
+    
+    <!-- Dark Overlay for better text readability -->
+    <div class="fixed top-0 left-0 w-full h-full bg-black/60 z-10"></div>
+    
+    <!-- Content Layer -->
+    <div class="relative z-20 flex-grow flex flex-col justify-center items-center px-4">
         <div class="w-full flex-shrink-0">
-            <div class="relative flex h-auto min-h-screen w-full flex-col bg-[#111a22] dark group/design-root overflow-x-hidden">
-                <div class="flex w-full grow bg-[#111a22] @container py-3">
-                    <div class="w-full gap-1 overflow-hidden bg-[#111a22] @[480px]:gap-2 aspect-[2/3] flex flex-col">
+            <div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+                <div class="flex w-full grow @container py-3">
+                    <div class="w-full gap-1 overflow-hidden @[480px]:gap-2 aspect-[2/3] flex flex-col">
                         <div class="w-full bg-center bg-no-repeat bg-cover aspect-auto rounded-none flex-1" 
                              style='background-image: url("static/logo/image.png"); background-position: bottom;'>
                         </div>

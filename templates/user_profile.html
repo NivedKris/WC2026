@@ -4,7 +4,14 @@
 
 {% block content %}
 <div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
-    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+    <!-- Video Background -->
+    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+        <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
+    </video>
+    
+    <!-- Content Layer -->
+    <div class="relative z-10">
+    <div class="flex items-center bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-20">
         <a href="{{ url_for('dashboard') }}" class="text-black dark:text-white flex size-12 shrink-0 items-center">
             <span class="material-symbols-outlined text-2xl">arrow_back</span>
         </a>
@@ -14,7 +21,7 @@
 
     <div class="flex-1 px-4 py-6">
         <!-- User Info Card -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 mb-6">
+        <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-6 shadow-sm border border-blue-400/30 mb-6">
             <div class="flex items-center gap-4 mb-4">
                 <div class="relative">
                     <img src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" 
@@ -24,19 +31,19 @@
                     </a>
                 </div>
                 <div>
-                    <h3 class="text-lg font-bold text-slate-800 dark:text-white">{{ user_data[0] }}</h3>
-                    <p class="text-slate-600 dark:text-slate-400 text-sm">{{ user_data[1] }}</p>
+                    <h3 class="text-lg font-bold text-white">{{ user_data[0] }}</h3>
+                    <p class="text-blue-200 text-sm">{{ user_data[1] }}</p>
                 </div>
             </div>
 
             <div class="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                    <p class="text-slate-500 dark:text-slate-400">Member Since</p>
-                    <p class="text-slate-800 dark:text-white font-medium">{{ user_data[4][:10] }}</p>
+                    <p class="text-blue-200">Member Since</p>
+                    <p class="text-white font-medium">{{ user_data[4][:10] }}</p>
                 </div>
                 <div>
-                    <p class="text-slate-500 dark:text-slate-400">Status</p>
-                    <p class="text-slate-800 dark:text-white font-medium">
+                    <p class="text-blue-200">Status</p>
+                    <p class="text-white font-medium">
                         {% if user_data[3] %}
                         <span class="bg-yellow-500 text-black px-2 py-1 rounded-full text-xs font-bold">Premium</span>
                         {% else %}
@@ -56,48 +63,48 @@
         </div>
 
         <!-- Nation Card -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 mb-6">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">My Nation</h3>
+        <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-6 shadow-sm border border-blue-400/30 mb-6">
+            <h3 class="text-lg font-bold text-white mb-4">My Nation</h3>
             <div class="flex items-center gap-4">
                 {% if nation_flag %}
                 <img src="{{ nation_flag }}" alt="{{ user_data[2] }} flag" class="w-16 h-12 rounded border object-cover">
                 {% else %}
                 <div class="w-16 h-12 bg-slate-300 dark:bg-slate-600 rounded border flex items-center justify-center">
-                    <span class="text-xs text-slate-600 dark:text-slate-400">No flag</span>
+                    <span class="text-xs text-blue-200">No flag</span>
                 </div>
                 {% endif %}
                 <div>
-                    <p class="text-slate-800 dark:text-white font-bold text-lg">{{ user_data[2] or 'No nation selected' }}</p>
-                    <p class="text-slate-600 dark:text-slate-400 text-sm">Your supported team</p>
+                    <p class="text-white font-bold text-lg">{{ user_data[2] or 'No nation selected' }}</p>
+                    <p class="text-blue-200 text-sm">Your supported team</p>
                 </div>
             </div>
         </div>
 
         <!-- Stats Card -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">My Stats</h3>
+        <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-6 shadow-sm border border-blue-400/30">
+            <h3 class="text-lg font-bold text-white mb-4">My Stats</h3>
             <div class="grid grid-cols-2 gap-4">
                 <div class="text-center p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
                     <p class="text-2xl font-bold text-primary">{{ user_data[5] or 0 }}</p>
-                    <p class="text-slate-600 dark:text-slate-400 text-sm">Months Paid</p>
+                    <p class="text-blue-200 text-sm">Months Paid</p>
                 </div>
                 <div class="text-center p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
                     <p class="text-2xl font-bold text-primary">₹{{ user_data[6] or 0 }}</p>
-                    <p class="text-slate-600 dark:text-slate-400 text-sm">Total Contributed</p>
+                    <p class="text-blue-200 text-sm">Total Contributed</p>
                 </div>
             </div>
         </div>
 
         <!-- Payment History -->
         {% if payment_history %}
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 mt-6">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Payment History</h3>
+        <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-6 shadow-sm border border-blue-400/30 mt-6">
+            <h3 class="text-lg font-bold text-white mb-4">Payment History</h3>
             <div class="space-y-3">
                 {% for payment in payment_history %}
                 <div class="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                     <div>
-                        <p class="text-slate-800 dark:text-white font-medium">{{ payment[0] }}</p>
-                        <p class="text-slate-600 dark:text-slate-400 text-sm">₹{{ payment[1] }}</p>
+                        <p class="text-white font-medium">{{ payment[0] }}</p>
+                        <p class="text-blue-200 text-sm">₹{{ payment[1] }}</p>
                     </div>
                     <div>
                         {% if payment[2] == 'completed' %}
@@ -120,5 +127,6 @@
             <p class="text-slate-500 text-xs">Built by <span class="text-primary">MARK.ORG</span> | © 2025 WC 2026</p>
         </div>
     </div>
+    </div> <!-- Close content layer -->
 </div>
 {% endblock %}

@@ -4,7 +4,14 @@
 
 {% block content %}
 <div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
-    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between">
+    <!-- Video Background -->
+    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+        <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
+    </video>
+    
+    <!-- Content Layer -->
+    <div class="relative z-10">
+    <div class="flex items-center bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between">
         <div class="size-12 shrink-0"></div>
         <h2 class="text-slate-800 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Reward Claim</h2>
         <div class="size-12 shrink-0"></div>
@@ -36,5 +43,6 @@
             </a>
         </div>
     </div>
+    </div> <!-- Close content layer -->
 </div>
 {% endblock %}

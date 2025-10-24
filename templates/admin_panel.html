@@ -4,7 +4,14 @@
 
 {% block content %}
 <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
-    <div class="flex items-center bg-[#0D1B2A] p-4 pb-2 justify-between">
+    <!-- Video Background -->
+    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-20">
+        <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
+    </video>
+    
+    <!-- Content Layer -->
+    <div class="relative z-10">
+    <div class="flex items-center bg-[#0D1B2A]/70 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-20">
         <h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Admin Panel</h2>
         <a href="{{ url_for('logout') }}" class="text-white flex items-center gap-2">
             <span class="material-symbols-outlined">logout</span>
@@ -12,21 +19,21 @@
     </div>
 
     <!-- Stats Overview -->
-    <div class="p-4 bg-[#0D1B2A]">
+    <div class="p-4">
         <div class="grid grid-cols-2 gap-4 mb-6">
-            <div class="bg-[#1F2937] rounded-lg p-4 text-center">
+            <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-4 text-center">
                 <p class="text-2xl font-bold text-white">{{ payment_stats[0] }}</p>
                 <p class="text-[#92adc9] text-sm">Total Payments</p>
             </div>
-            <div class="bg-[#1F2937] rounded-lg p-4 text-center">
+            <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-4 text-center">
                 <p class="text-2xl font-bold text-white">₹{{ payment_stats[1] or 0 }}</p>
                 <p class="text-[#92adc9] text-sm">Total Amount</p>
             </div>
-            <div class="bg-[#1F2937] rounded-lg p-4 text-center">
+            <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-4 text-center">
                 <p class="text-2xl font-bold text-white">{{ payment_stats[2] }}</p>
                 <p class="text-[#92adc9] text-sm">Completed</p>
             </div>
-            <div class="bg-[#1F2937] rounded-lg p-4 text-center">
+            <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-4 text-center">
                 <p class="text-2xl font-bold text-white">{{ payment_stats[3] }}</p>
                 <p class="text-[#92adc9] text-sm">Pending</p>
             </div>
@@ -34,13 +41,13 @@
     </div>
 
     <!-- Pending Payments -->
-    <div class="p-4 bg-[#101922]">
+    <div class="p-4">
         <h3 class="text-white text-lg font-bold mb-4">Pending Payment Requests</h3>
         
         {% if pending_payments %}
         <div class="space-y-3">
             {% for payment in pending_payments %}
-            <div class="bg-[#1F2937] rounded-lg p-4">
+            <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-4">
                 <div class="flex justify-between items-start mb-3">
                     <div>
                         <p class="text-white font-bold">{{ payment[2] }}</p>
@@ -50,10 +57,10 @@
                         <p class="text-[#92adc9] text-sm">Requested: {{ payment[6][:16] }}</p>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="approvePayment({{ payment[0] }})" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                        <button onclick="approvePayment('{{ payment[0] }}')" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
                             Approve
                         </button>
-                        <button onclick="rejectPayment({{ payment[0] }})" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                        <button onclick="rejectPayment('{{ payment[0] }}')" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
                             Reject
                         </button>
                     </div>
@@ -62,7 +69,7 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="bg-[#1F2937] rounded-lg p-6 text-center">
+        <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-6 text-center">
             <span class="material-symbols-outlined text-4xl text-[#92adc9] mb-2">payments</span>
             <p class="text-[#92adc9]">No pending payment requests</p>
         </div>
@@ -70,12 +77,12 @@
     </div>
 
     <!-- All Users -->
-    <div class="p-4 bg-[#101922]">
+    <div class="p-4">
         <h3 class="text-white text-lg font-bold mb-4">All Users</h3>
         
         <div class="space-y-3">
             {% for user in users %}
-            <div class="bg-[#1F2937] rounded-lg p-4">
+            <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-4">
                 <div class="flex justify-between items-center">
                     <div>
                         <p class="text-white font-bold">{{ user[1] }}</p>
@@ -96,12 +103,12 @@
     </div>
 
     <!-- Winner Declaration Section -->
-    <div class="p-4 bg-[#101922]">
+    <div class="p-4">
         <h3 class="text-white text-lg font-bold mb-4">Declare World Cup Winner</h3>
         
         {% if winning_nation %}
         <!-- Winner Already Declared -->
-        <div class="bg-yellow-500/20 border-2 border-yellow-500 rounded-xl p-6 text-center">
+        <div class="bg-yellow-500/20 backdrop-blur-sm border-2 border-yellow-500 rounded-xl p-6 text-center">
             <div class="flex items-center justify-center gap-2 mb-3">
                 <span class="material-symbols-outlined text-3xl text-yellow-400">emoji_events</span>
                 <h4 class="text-2xl font-bold text-yellow-400">Winner Declared!</h4>
@@ -114,11 +121,11 @@
         {% else %}
         <!-- Winner Not Yet Declared -->
         <div class="flex flex-col gap-4">
-            <div class="bg-red-500/20 border border-red-500 rounded-lg p-3 mb-2">
+            <div class="bg-red-500/20 backdrop-blur-sm border border-red-500 rounded-lg p-3 mb-2">
                 <p class="text-red-300 text-sm font-medium">⚠️ Warning: Once you set the winner, it cannot be changed!</p>
             </div>
             <div class="relative w-full">
-                <select id="winnerSelect" class="w-full h-12 px-4 text-white bg-[#1F2937] border-none rounded-lg focus:outline-none appearance-none">
+                <select id="winnerSelect" class="w-full h-12 px-4 text-white bg-[#1F2937]/70 backdrop-blur-sm border-none rounded-lg focus:outline-none appearance-none">
                     <option value="">Select Winning Nation</option>
                     {% for nation in nations %}
                     <option value="{{ nation[0] }}">{{ nation[1] }}</option>
@@ -136,13 +143,13 @@
     </div>
 
     <!-- Pending Reward Claims -->
-    <div class="p-4 bg-[#101922]">
+    <div class="p-4">
         <h3 class="text-white text-lg font-bold mb-4">Pending Reward Claims</h3>
     
     {% if pending_rewards %}
     <div class="space-y-3">
         {% for claim in pending_rewards %}
-        <div class="bg-[#1F2937] rounded-lg p-4">
+        <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-4">
             <div class="flex justify-between items-start mb-3">
                 <div>
                     <p class="text-white font-bold">{{ claim[1] }}</p>
@@ -151,7 +158,7 @@
                     <p class="text-[#92adc9] text-sm">Claimed: {{ claim[4][:16] }}</p>
                 </div>
                 <div class="flex gap-2">
-                    <button onclick="approveReward({{ claim[0] }})" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                    <button onclick="approveReward('{{ claim[0] }}')" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
                         Approve
                     </button>
                 </div>
@@ -160,7 +167,7 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="bg-[#1F2937] rounded-lg p-6 text-center">
+    <div class="bg-[#1F2937]/70 backdrop-blur-sm rounded-lg p-6 text-center">
         <span class="material-symbols-outlined text-4xl text-[#92adc9] mb-2">celebration</span>
         <p class="text-[#92adc9]">No pending reward claims</p>
     </div>
@@ -172,6 +179,7 @@
         <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
         <p class="text-slate-500 text-xs">Built by <span class="text-primary">MARK.ORG</span> | © 2025 WC 2026</p>
     </div>
+    </div> <!-- Close content layer -->
 </div>
 
 <script>

@@ -147,7 +147,14 @@
 {% else %}
 <!-- NORMAL DASHBOARD - Before Winner Declaration -->
 <div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
-    <div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+    <!-- Video Background -->
+    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-20">
+        <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
+    </video>
+    
+    <!-- Content Layer with backdrop blur for better readability -->
+    <div class="relative z-10 flex h-auto min-h-screen w-full flex-col">
+    <div class="flex items-center bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-20">
     <div class="flex size-12 shrink-0 items-center">
         <a href="{{ url_for('user_profile') }}">
             <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="Avatar">
@@ -163,13 +170,13 @@
     
     <!-- Monthly Payment Section -->
     <div class="px-4 py-3">
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+        <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-4 border border-blue-400/30">
             <div class="flex items-center justify-between mb-3">
-                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Monthly Support</h3>
+                <h3 class="text-lg font-bold text-white">Monthly Support</h3>
                 <span class="text-2xl font-bold text-primary">₹50</span>
             </div>
             
-            <p class="text-slate-600 dark:text-slate-400 text-sm mb-4">
+            <p class="text-blue-200 text-sm mb-4">
                 Support your nation for <strong>{{ current_month }}</strong>. Pay ₹50 to show your support this month.
             </p>
             
@@ -214,10 +221,10 @@
             
             <div class="space-y-2">
                 {% for month in missed_months %}
-                <div class="bg-white dark:bg-slate-800 rounded-lg p-3 flex items-center justify-between border border-red-300 dark:border-red-700">
+                <div class="bg-slate-800/70 backdrop-blur-md rounded-lg p-3 flex items-center justify-between border border-red-300 dark:border-red-700">
                     <div>
-                        <p class="text-slate-800 dark:text-white font-medium">{{ month }}</p>
-                        <p class="text-slate-600 dark:text-slate-400 text-xs">Backpayment Available</p>
+                        <p class="text-white font-medium">{{ month }}</p>
+                        <p class="text-blue-200 text-xs">Backpayment Available</p>
                     </div>
                     <a href="{{ url_for('pay_monthly', month=month) }}" onclick="setButtonLoading(this); return true;" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm no-underline flex items-center gap-1">
                         <span class="material-symbols-outlined text-base">payment</span>
@@ -251,15 +258,15 @@
     <div class="px-4 py-3">
         <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] mb-3">Your Support Stats</h3>
         <div class="grid grid-cols-2 gap-3">
-            <div class="bg-white dark:bg-slate-800 rounded-xl p-4 text-center border border-slate-200 dark:border-slate-700">
+            <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-4 text-center border border-blue-400/30">
                 <p class="text-2xl font-bold text-primary">{{ user_stats[0] }}</p>
-                <p class="text-slate-600 dark:text-slate-400 text-sm">Months Paid</p>
+                <p class="text-blue-200 text-sm">Months Paid</p>
             </div>
-            <div class="bg-white dark:bg-slate-800 rounded-xl p-4 text-center border border-slate-200 dark:border-slate-700">
+            <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-4 text-center border border-blue-400/30">
                 <p class="text-2xl font-bold text-primary">₹{{ user_stats[1] }}</p>
-                <p class="text-slate-600 dark:text-slate-400 text-sm">Total Contributed</p>
+                <p class="text-blue-200 text-sm">Total Contributed</p>
             </div>
-            <div class="bg-white dark:bg-slate-800 rounded-xl p-4 text-center border border-slate-200 dark:border-slate-700">
+            <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-4 text-center border border-blue-400/30">
                 <p class="text-2xl font-bold text-primary">
                     {% if user_stats[0] >= 3 %}
                     <span class="bg-yellow-500 text-black px-2 py-1 rounded-full text-xs">Premium</span>
@@ -267,7 +274,7 @@
                     {{ 3 - user_stats[0] }}
                     {% endif %}
                 </p>
-                <p class="text-slate-600 dark:text-slate-400 text-sm">
+                <p class="text-blue-200 text-sm">
                     {% if user_stats[0] >= 3 %}
                     Status
                     {% else %}
@@ -275,9 +282,9 @@
                     {% endif %}
                 </p>
             </div>
-            <div class="bg-white dark:bg-slate-800 rounded-xl p-4 text-center border border-slate-200 dark:border-slate-700">
+            <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-4 text-center border border-blue-400/30">
                 <p class="text-2xl font-bold text-primary">{{ months_until_wc|length }}</p>
-                <p class="text-slate-600 dark:text-slate-400 text-sm">Months Until WC</p>
+                <p class="text-blue-200 text-sm">Months Until WC</p>
             </div>
         </div>
     </div>
@@ -285,7 +292,7 @@
     <!-- Payment Calendar/Timeline -->
     <div class="px-4 py-3">
         <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] mb-3">Payment Schedule</h3>
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+        <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-4 border border-blue-400/30">
             <div class="space-y-2 max-h-80 overflow-y-auto">
                 {% for month_data in payment_calendar %}
                 <div class="flex items-center justify-between p-3 rounded-lg
@@ -316,7 +323,7 @@
                             {% endif %}
                         </span>
                         <div>
-                            <p class="font-medium text-slate-800 dark:text-white">
+                            <p class="font-medium text-white">
                                 {{ month_data.month }}
                                 {% if month_data.is_current %}
                                 <span class="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full ml-2">Current</span>
@@ -394,11 +401,11 @@
         <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] mb-3">Payment History</h3>
         <div class="space-y-2">
             {% for payment in payment_history %}
-            <div class="bg-white dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
+            <div class="bg-slate-800/70 backdrop-blur-md rounded-lg p-3 border border-blue-400/30">
                 <div class="flex justify-between items-center">
                     <div>
-                        <p class="text-slate-800 dark:text-white font-medium">{{ payment[0] }}</p>
-                        <p class="text-slate-600 dark:text-slate-400 text-sm">₹{{ payment[1] }}</p>
+                        <p class="text-white font-medium">{{ payment[0] }}</p>
+                        <p class="text-blue-200 text-sm">₹{{ payment[1] }}</p>
                     </div>
                     <div>
                         {% if payment[2] == 'completed' %}
@@ -459,7 +466,8 @@
         <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
         <p class="text-slate-500 text-xs">Built by <span class="text-primary">MARK.ORG</span> | © 2025 WC 2026</p>
     </div>
-</div>
+    </div> <!-- Close content layer -->
+</div> <!-- Close main container -->
 {% endif %}
 
 <!-- Fireworks Script for Winners -->

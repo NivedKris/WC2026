@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
-import sqlite3
+from pymongo import MongoClient
+from bson.objectid import ObjectId
 import os
 import json
 from dotenv import load_dotenv
@@ -10,8 +11,20 @@ import hashlib
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'
-app.config['DATABASE'] = 'worldcup.db'
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
+
+# MongoDB Atlas configuration
+MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb+srv://markorganisation:nithu2003@cluster0.tzcwp1s.mongodb.net/?appName=Cluster0')
+client = MongoClient(MONGODB_URI)
+db = client['wc2026']
+
+# Collections
+users_collection = db['users']
+nations_collection = db['nations']
+monthly_payments_collection = db['monthly_payments']
+user_stats_collection = db['user_stats']
+winner_claims_collection = db['winner_claims']
+app_settings_collection = db['app_settings']
 
 # Mail configuration
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
@@ -164,87 +177,92 @@ def send_admin_notification(subject, body):
 
 def send_winner_announcement_to_winners(winning_nation):
     """Send email to all users who supported the winning nation"""
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT username, email FROM users 
-            WHERE nation = ?
-        ''', (winning_nation,))
-        winners = cursor.fetchall()
-        
-        # Calculate reward info
-        cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM monthly_payments WHERE status = "completed"')
-        total_pool = cursor.fetchone()[0]
-        winner_count = len(winners)
-        reward_per_person = round(total_pool / winner_count, 2) if winner_count > 0 else 0
-        
-        for username, email in winners:
-            subject = f"🏆 CONGRATULATIONS! {winning_nation} Won the World Cup!"
-            html = f"""
-            <html>
-                <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #fef3c7;">
-                    <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; border: 4px solid #fbbf24;">
-                        <div style="text-align: center;">
-                            <h1 style="color: #92400e; font-size: 36px;">🏆 CONGRATULATIONS! 🏆</h1>
-                            <h2 style="color: #1173d4;">{winning_nation} Won the World Cup 2026!</h2>
-                        </div>
-                        <p style="font-size: 18px;">Hi <strong>{username}</strong>,</p>
-                        <p style="font-size: 16px; line-height: 1.6;">
-                            Amazing news! Your nation <strong style="color: #059669;">{winning_nation}</strong> has won the World Cup 2026! 🎉
-                        </p>
-                        <div style="background-color: #dcfce7; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
-                            <p style="margin: 0; font-size: 16px;">Your Reward Amount:</p>
-                            <p style="margin: 10px 0; font-size: 32px; font-weight: bold; color: #059669;">₹{reward_per_person}</p>
-                            <p style="margin: 0; font-size: 14px; color: #666;">Total Pool: ₹{total_pool} | Winners: {winner_count}</p>
-                        </div>
-                        <p style="font-size: 16px;">
-                            <strong>Next Step:</strong> Login to your dashboard and claim your reward now!
-                        </p>
-                        <div style="text-align: center; margin: 30px 0;">
-                            <a href="#" style="display: inline-block; background-color: #059669; color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: bold;">Claim Your Reward</a>
-                        </div>
-                        <p style="margin-top: 30px; font-size: 14px; color: #666;">
-                            Best regards,<br><strong>WC 2026 Team</strong>
-                        </p>
+    winners = list(users_collection.find(
+        {'nation': winning_nation},
+        {'username': 1, 'email': 1}
+    ))
+    
+    # Calculate reward info
+    pipeline = [
+        {'$match': {'status': 'completed'}},
+        {'$group': {'_id': None, 'total': {'$sum': '$amount'}}}
+    ]
+    result = list(monthly_payments_collection.aggregate(pipeline))
+    total_pool = result[0]['total'] if result else 0
+    winner_count = len(winners)
+    reward_per_person = round(total_pool / winner_count, 2) if winner_count > 0 else 0
+    
+    for winner in winners:
+        username = winner['username']
+        email = winner['email']
+        subject = f"🏆 CONGRATULATIONS! {winning_nation} Won the World Cup!"
+        html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #fef3c7;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; border: 4px solid #fbbf24;">
+                    <div style="text-align: center;">
+                        <h1 style="color: #92400e; font-size: 36px;">🏆 CONGRATULATIONS! 🏆</h1>
+                        <h2 style="color: #1173d4;">{winning_nation} Won the World Cup 2026!</h2>
                     </div>
-                </body>
-            </html>
-            """
-            send_email(subject, [email], html)
+                    <p style="font-size: 18px;">Hi <strong>{username}</strong>,</p>
+                    <p style="font-size: 16px; line-height: 1.6;">
+                        Amazing news! Your nation <strong style="color: #059669;">{winning_nation}</strong> has won the World Cup 2026! 🎉
+                    </p>
+                    <div style="background-color: #dcfce7; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+                        <p style="margin: 0; font-size: 16px;">Your Reward Amount:</p>
+                        <p style="margin: 10px 0; font-size: 32px; font-weight: bold; color: #059669;">₹{reward_per_person}</p>
+                        <p style="margin: 0; font-size: 14px; color: #666;">Total Pool: ₹{total_pool} | Winners: {winner_count}</p>
+                    </div>
+                    <p style="font-size: 16px;">
+                        <strong>Next Step:</strong> Login to your dashboard and claim your reward now!
+                    </p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="#" style="display: inline-block; background-color: #059669; color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: bold;">Claim Your Reward</a>
+                    </div>
+                    <p style="margin-top: 30px; font-size: 14px; color: #666;">
+                        Best regards,<br><strong>WC 2026 Team</strong>
+                    </p>
+                </div>
+            </body>
+        </html>
+        """
+        send_email(subject, [email], html)
 
 def send_winner_announcement_to_losers(winning_nation):
     """Send email to all users who did NOT support the winning nation"""
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT username, email, nation FROM users 
-            WHERE nation IS NOT NULL AND nation != ?
-        ''', (winning_nation,))
-        losers = cursor.fetchall()
-        
-        for username, email, their_nation in losers:
-            subject = f"World Cup 2026 Winner Announced - {winning_nation}"
-            html = f"""
-            <html>
-                <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
-                    <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px;">
-                        <h2 style="color: #1173d4;">World Cup 2026 Winner Announced</h2>
-                        <p>Hi <strong>{username}</strong>,</p>
-                        <p>The World Cup 2026 has concluded and the winner has been announced!</p>
-                        <div style="background-color: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
-                            <p style="font-size: 24px; font-weight: bold; color: #92400e; margin: 0;">🏆 {winning_nation} 🏆</p>
-                        </div>
-                        <p>You supported <strong>{their_nation}</strong>. While your team didn't win this time, thank you for being part of the WC 2026 community!</p>
-                        <p style="font-size: 20px; margin-top: 30px;"><strong>Better luck next time! ⚽</strong></p>
-                        <p>We hope to see you at the next World Cup!</p>
-                        <p style="margin-top: 30px; font-size: 14px; color: #666;">
-                            Best regards,<br><strong>WC 2026 Team</strong>
-                        </p>
+    losers = list(users_collection.find(
+        {
+            'nation': {'$ne': None, '$ne': winning_nation}
+        },
+        {'username': 1, 'email': 1, 'nation': 1}
+    ))
+    
+    for loser in losers:
+        username = loser['username']
+        email = loser['email']
+        their_nation = loser['nation']
+        subject = f"World Cup 2026 Winner Announced - {winning_nation}"
+        html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px;">
+                    <h2 style="color: #1173d4;">World Cup 2026 Winner Announced</h2>
+                    <p>Hi <strong>{username}</strong>,</p>
+                    <p>The World Cup 2026 has concluded and the winner has been announced!</p>
+                    <div style="background-color: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+                        <p style="font-size: 24px; font-weight: bold; color: #92400e; margin: 0;">🏆 {winning_nation} 🏆</p>
                     </div>
-                </body>
-            </html>
-            """
-            send_email(subject, [email], html)
+                    <p>You supported <strong>{their_nation}</strong>. While your team didn't win this time, thank you for being part of the WC 2026 community!</p>
+                    <p style="font-size: 20px; margin-top: 30px;"><strong>Better luck next time! ⚽</strong></p>
+                    <p>We hope to see you at the next World Cup!</p>
+                    <p style="margin-top: 30px; font-size: 14px; color: #666;">
+                        Best regards,<br><strong>WC 2026 Team</strong>
+                    </p>
+                </div>
+            </body>
+        </html>
+        """
+        send_email(subject, [email], html)
 
 def send_missed_payment_warning(email, username, missed_months):
     """Send warning email when user has missed payments"""
@@ -310,151 +328,104 @@ def send_monthly_reminder_to_all():
     """Send monthly payment reminder to all users at start of each month"""
     current_month = get_current_month_year()
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        
-        # Get all users who haven't paid for current month
-        cursor.execute('''
-            SELECT u.username, u.email 
-            FROM users u
-            WHERE u.nation IS NOT NULL
-            AND u.id NOT IN (
-                SELECT user_id FROM monthly_payments 
-                WHERE month_year = ? AND status IN ('completed', 'pending')
-            )
-        ''', (current_month,))
-        
-        users = cursor.fetchall()
-        
-        for username, email in users:
-            send_payment_reminder(email, username, current_month)
+    # Get all users who have a nation
+    all_users = list(users_collection.find(
+        {'nation': {'$ne': None}},
+        {'_id': 1, 'username': 1, 'email': 1}
+    ))
+    
+    # Get user IDs who have already paid or have pending payment for current month
+    paid_user_ids = [
+        p['user_id'] for p in monthly_payments_collection.find(
+            {
+                'month_year': current_month,
+                'status': {'$in': ['completed', 'pending']}
+            },
+            {'user_id': 1}
+        )
+    ]
+    
+    # Send reminder to users who haven't paid
+    for user in all_users:
+        user_id_str = str(user['_id'])
+        if user_id_str not in paid_user_ids:
+            send_payment_reminder(user['email'], user['username'], current_month)
 
 # Database initialization
 def init_db():
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        
-        # Users table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                password TEXT,
-                email TEXT,
-                nation TEXT,
-                avatar_url TEXT DEFAULT 'default_avatar.png',
-                theme_color TEXT DEFAULT '#1173d4',
-                is_premium BOOLEAN DEFAULT FALSE,
-                is_admin BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Nations table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS nations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                flag_url TEXT,
-                supporter_count INTEGER DEFAULT 0
-            )
-        ''')
-        
-        # Monthly payments table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS monthly_payments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                month_year TEXT,
-                amount REAL DEFAULT 50.00,
-                status TEXT DEFAULT 'pending',
-                payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                approved_at TIMESTAMP NULL,
-                approved_by INTEGER NULL,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # User stats table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                months_paid INTEGER DEFAULT 0,
-                total_paid REAL DEFAULT 0.00,
-                last_payment_month TEXT,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # Winner claims table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS winner_claims (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                winning_nation TEXT,
-                reward_amount REAL DEFAULT 100.00,
-                status TEXT DEFAULT 'pending',
-                claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                approved_at TIMESTAMP NULL,
-                approved_by INTEGER NULL,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # App settings table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS app_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                winning_nation TEXT NULL,
-                winner_declared_at TIMESTAMP NULL,
-                declared_by INTEGER NULL
-            )
-        ''')
-        
-        # Insert default nations (FIFA World Cup 2026 Top Teams)
-        nations = [
-            ('Spain', 'https://flagcdn.com/w320/es.png'),
-            ('France', 'https://flagcdn.com/w320/fr.png'),
-            ('England', 'https://flagcdn.com/w320/gb-eng.png'),
-            ('Brazil', 'https://flagcdn.com/w320/br.png'),
-            ('Argentina', 'https://flagcdn.com/w320/ar.png'),
-            ('Germany', 'https://flagcdn.com/w320/de.png'),
-            ('Portugal', 'https://flagcdn.com/w320/pt.png'),
-            ('Netherlands', 'https://flagcdn.com/w320/nl.png'),
-            ('Italy', 'https://flagcdn.com/w320/it.png'),
-            ('Uruguay', 'https://flagcdn.com/w320/uy.png'),
-            ('Belgium', 'https://flagcdn.com/w320/be.png'),
-            ('Colombia', 'https://flagcdn.com/w320/co.png'),
-            ('Mexico', 'https://flagcdn.com/w320/mx.png'),
-            ('United States', 'https://flagcdn.com/w320/us.png'),
-            ('Norway', 'https://flagcdn.com/w320/no.png'),
-            ('Croatia', 'https://flagcdn.com/w320/hr.png'),
-            ('Denmark', 'https://flagcdn.com/w320/dk.png'),
-            ('Japan', 'https://flagcdn.com/w320/jp.png'),
-            ('Switzerland', 'https://flagcdn.com/w320/ch.png'),
-            ('Morocco', 'https://flagcdn.com/w320/ma.png'),
-            ('Canada', 'https://flagcdn.com/w320/ca.png'),
-            ('Sweden', 'https://flagcdn.com/w320/se.png'),
-            ('Austria', 'https://flagcdn.com/w320/at.png'),
-            ('Ecuador', 'https://flagcdn.com/w320/ec.png')
-        ]
-        
-        cursor.executemany('''
-            INSERT OR IGNORE INTO nations (name, flag_url) 
-            VALUES (?, ?)
-        ''', nations)
-        
-        # Insert admin user with hashed password
-        cursor.execute('''
-            INSERT OR IGNORE INTO users (username, password, email, is_admin) 
-            VALUES (?, ?, ?, ?)
-        ''', ('admin', hash_password('admin@2025wc!'), 'nithupd@gmail.com', True))
-        
-        # Insert default app settings
-        cursor.execute('INSERT OR IGNORE INTO app_settings (id) VALUES (1)')
-        
-        conn.commit()
+    # MongoDB initialization - Create indexes for performance
+    
+    # Create indexes for users collection
+    users_collection.create_index('username', unique=True)
+    users_collection.create_index('email')
+    
+    # Create indexes for nations collection
+    nations_collection.create_index('name', unique=True)
+    
+    # Create indexes for monthly_payments collection
+    monthly_payments_collection.create_index([('user_id', 1), ('month_year', 1)])
+    monthly_payments_collection.create_index('status')
+    
+    # Create indexes for user_stats collection
+    user_stats_collection.create_index('user_id', unique=True)
+    
+    # Create indexes for winner_claims collection
+    winner_claims_collection.create_index('user_id')
+    winner_claims_collection.create_index('status')
+    
+    # Insert default nations (FIFA World Cup 2026 Top Teams)
+    nations = [
+        {'name': 'Spain', 'flag_url': 'https://flagcdn.com/w320/es.png', 'supporter_count': 0},
+        {'name': 'France', 'flag_url': 'https://flagcdn.com/w320/fr.png', 'supporter_count': 0},
+        {'name': 'England', 'flag_url': 'https://flagcdn.com/w320/gb-eng.png', 'supporter_count': 0},
+        {'name': 'Brazil', 'flag_url': 'https://flagcdn.com/w320/br.png', 'supporter_count': 0},
+        {'name': 'Argentina', 'flag_url': 'https://flagcdn.com/w320/ar.png', 'supporter_count': 0},
+        {'name': 'Germany', 'flag_url': 'https://flagcdn.com/w320/de.png', 'supporter_count': 0},
+        {'name': 'Portugal', 'flag_url': 'https://flagcdn.com/w320/pt.png', 'supporter_count': 0},
+        {'name': 'Netherlands', 'flag_url': 'https://flagcdn.com/w320/nl.png', 'supporter_count': 0},
+        {'name': 'Italy', 'flag_url': 'https://flagcdn.com/w320/it.png', 'supporter_count': 0},
+        {'name': 'Uruguay', 'flag_url': 'https://flagcdn.com/w320/uy.png', 'supporter_count': 0},
+        {'name': 'Belgium', 'flag_url': 'https://flagcdn.com/w320/be.png', 'supporter_count': 0},
+        {'name': 'Colombia', 'flag_url': 'https://flagcdn.com/w320/co.png', 'supporter_count': 0},
+        {'name': 'Mexico', 'flag_url': 'https://flagcdn.com/w320/mx.png', 'supporter_count': 0},
+        {'name': 'United States', 'flag_url': 'https://flagcdn.com/w320/us.png', 'supporter_count': 0},
+        {'name': 'Norway', 'flag_url': 'https://flagcdn.com/w320/no.png', 'supporter_count': 0},
+        {'name': 'Croatia', 'flag_url': 'https://flagcdn.com/w320/hr.png', 'supporter_count': 0},
+        {'name': 'Denmark', 'flag_url': 'https://flagcdn.com/w320/dk.png', 'supporter_count': 0},
+        {'name': 'Japan', 'flag_url': 'https://flagcdn.com/w320/jp.png', 'supporter_count': 0},
+        {'name': 'Switzerland', 'flag_url': 'https://flagcdn.com/w320/ch.png', 'supporter_count': 0},
+        {'name': 'Morocco', 'flag_url': 'https://flagcdn.com/w320/ma.png', 'supporter_count': 0},
+        {'name': 'Canada', 'flag_url': 'https://flagcdn.com/w320/ca.png', 'supporter_count': 0},
+        {'name': 'Sweden', 'flag_url': 'https://flagcdn.com/w320/se.png', 'supporter_count': 0},
+        {'name': 'Austria', 'flag_url': 'https://flagcdn.com/w320/at.png', 'supporter_count': 0},
+        {'name': 'Ecuador', 'flag_url': 'https://flagcdn.com/w320/ec.png', 'supporter_count': 0}
+    ]
+    
+    # Insert nations only if collection is empty
+    if nations_collection.count_documents({}) == 0:
+        nations_collection.insert_many(nations)
+    
+    # Insert admin user with hashed password if not exists
+    if not users_collection.find_one({'username': 'admin'}):
+        users_collection.insert_one({
+            'username': 'admin',
+            'password': hash_password('admin@2025wc!'),
+            'email': 'nithupd@gmail.com',
+            'nation': None,
+            'avatar_url': 'default_avatar.png',
+            'theme_color': '#1173d4',
+            'is_premium': False,
+            'is_admin': True,
+            'created_at': datetime.now()
+        })
+    
+    # Insert default app settings if not exists
+    if app_settings_collection.count_documents({}) == 0:
+        app_settings_collection.insert_one({
+            'winning_nation': None,
+            'winner_declared_at': None,
+            'declared_by': None
+        })
 
 def get_current_month_year():
     return datetime.now().strftime("%B %Y")
@@ -475,11 +446,8 @@ def get_months_until_world_cup():
     return months
 
 def get_winning_nation():
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT winning_nation FROM app_settings WHERE id = 1')
-        result = cursor.fetchone()
-        return result[0] if result else None
+    result = app_settings_collection.find_one({})
+    return result['winning_nation'] if result and 'winning_nation' in result else None
 
 # Routes
 @app.route('/')
@@ -493,24 +461,20 @@ def login():
         password = request.form.get('password')
         hashed_password = hash_password(password)
         
-        with sqlite3.connect(app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', 
-                         (username, hashed_password))
-            user = cursor.fetchone()
+        user = users_collection.find_one({'username': username, 'password': hashed_password})
+        
+        if user:
+            session['user_id'] = str(user['_id'])
+            session['username'] = user['username']
+            session['avatar_url'] = user.get('avatar_url', 'default_avatar.png')
+            session['theme_color'] = user.get('theme_color', '#1173d4')
+            session['is_premium'] = bool(user.get('is_premium', False))
+            session['is_admin'] = bool(user.get('is_admin', False))
+            session['nation'] = user.get('nation')
             
-            if user:
-                session['user_id'] = user[0]
-                session['username'] = user[1]
-                session['avatar_url'] = user[5]
-                session['theme_color'] = user[6]
-                session['is_premium'] = bool(user[7])
-                session['is_admin'] = bool(user[8])
-                session['nation'] = user[4]
-                
-                if session['is_admin']:
-                    return redirect(url_for('admin_panel'))
-                return redirect(url_for('dashboard'))
+            if session['is_admin']:
+                return redirect(url_for('admin_panel'))
+            return redirect(url_for('dashboard'))
         
         return render_template('login.html', error='Invalid credentials')
     
@@ -534,30 +498,47 @@ def signup():
         hashed_password = hash_password(password)
         
         try:
-            with sqlite3.connect(app.config['DATABASE']) as conn:
-                cursor = conn.cursor()
-                cursor.execute('INSERT INTO users (username, password, email) VALUES (?, ?, ?)',
-                             (username, hashed_password, email))
-                user_id = cursor.lastrowid
-                
-                cursor.execute('INSERT INTO user_stats (user_id) VALUES (?)', (user_id,))
-                conn.commit()
-                
-                session['user_id'] = user_id
-                session['username'] = username
-                session['avatar_url'] = 'default_avatar.png'
-                session['theme_color'] = '#1173d4'
-                session['is_premium'] = False
-                session['is_admin'] = False
-                session['nation'] = None
-                
-                # Send welcome email
-                send_signup_email(email, username)
-                
-                return redirect(url_for('select_nation'))
+            # Check if username already exists
+            if users_collection.find_one({'username': username}):
+                return render_template('signup.html', error='Username already exists')
+            
+            # Insert new user
+            user_result = users_collection.insert_one({
+                'username': username,
+                'password': hashed_password,
+                'email': email,
+                'nation': None,
+                'avatar_url': 'default_avatar.png',
+                'theme_color': '#1173d4',
+                'is_premium': False,
+                'is_admin': False,
+                'created_at': datetime.now()
+            })
+            user_id = str(user_result.inserted_id)
+            
+            # Insert user stats
+            user_stats_collection.insert_one({
+                'user_id': user_id,
+                'months_paid': 0,
+                'total_paid': 0.00,
+                'last_payment_month': None
+            })
+            
+            session['user_id'] = user_id
+            session['username'] = username
+            session['avatar_url'] = 'default_avatar.png'
+            session['theme_color'] = '#1173d4'
+            session['is_premium'] = False
+            session['is_admin'] = False
+            session['nation'] = None
+            
+            # Send welcome email
+            send_signup_email(email, username)
+            
+            return redirect(url_for('select_nation'))
         
-        except sqlite3.IntegrityError:
-            return render_template('signup.html', error='Username already exists')
+        except Exception as e:
+            return render_template('signup.html', error='An error occurred during signup')
     
     return render_template('signup.html')
 
@@ -567,37 +548,37 @@ def select_nation():
         return redirect(url_for('login'))
     
     # Check if user already has a nation in the database
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT nation FROM users WHERE id = ?', (session['user_id'],))
-        user_data = cursor.fetchone()
-        
-        if user_data and user_data[0]:
-            session['nation'] = user_data[0]
-            return redirect(url_for('dashboard'))
+    user = users_collection.find_one({'_id': ObjectId(session['user_id'])})
     
-    # Get nations for selection
-    cursor.execute('SELECT id, name, flag_url FROM nations')
-    nations = cursor.fetchall()
+    if user and user.get('nation'):
+        session['nation'] = user['nation']
+        return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
         nation_id = request.form.get('nation_id')
         
         if nation_id:
-            cursor.execute('SELECT name FROM nations WHERE id = ?', (nation_id,))
-            nation = cursor.fetchone()
+            nation = nations_collection.find_one({'_id': ObjectId(nation_id)})
             
             if nation:
                 # Update user's nation
-                cursor.execute('UPDATE users SET nation = ? WHERE id = ?', 
-                             (nation[0], session['user_id']))
+                users_collection.update_one(
+                    {'_id': ObjectId(session['user_id'])},
+                    {'$set': {'nation': nation['name']}}
+                )
                 # Update supporter count
-                cursor.execute('UPDATE nations SET supporter_count = supporter_count + 1 WHERE id = ?', 
-                             (nation_id,))
-                conn.commit()
+                nations_collection.update_one(
+                    {'_id': ObjectId(nation_id)},
+                    {'$inc': {'supporter_count': 1}}
+                )
                 
-                session['nation'] = nation[0]
+                session['nation'] = nation['name']
                 return redirect(url_for('dashboard'))
+    
+    # Get nations for selection (after POST processing)
+    nations_cursor = nations_collection.find({}, {'_id': 1, 'name': 1, 'flag_url': 1})
+    # Convert to tuples for template compatibility (id, name, flag_url)
+    nations = [(str(n['_id']), n['name'], n['flag_url']) for n in nations_cursor]
     
     return render_template('select_nation.html', nations=nations)
 
@@ -611,121 +592,155 @@ def dashboard():
     time_left = world_cup_date - now
     winning_nation = get_winning_nation()
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        
-        # Get user stats
-        cursor.execute('''
-            SELECT months_paid, total_paid, last_payment_month 
-            FROM user_stats WHERE user_id = ?
-        ''', (session['user_id'],))
-        user_stats_data = cursor.fetchone() or (0, 0.00, None)
-        # Convert to proper types
-        user_stats = (
-            int(user_stats_data[0]) if user_stats_data[0] else 0,
-            float(user_stats_data[1]) if user_stats_data[1] else 0.00,
-            user_stats_data[2]
-        )
-        
-        # Get payment history
-        cursor.execute('''
-            SELECT month_year, amount, status, payment_date, approved_at
-            FROM monthly_payments 
-            WHERE user_id = ? 
-            ORDER BY payment_date DESC
-        ''', (session['user_id'],))
-        payment_history = cursor.fetchall()
-        
-        # Get current month payment status
-        current_month = get_current_month_year()
-        cursor.execute('''
-            SELECT status FROM monthly_payments 
-            WHERE user_id = ? AND month_year = ?
-        ''', (session['user_id'], current_month))
-        current_payment = cursor.fetchone()
-        
-        # Check if user has pending winner claim
-        cursor.execute('''
-            SELECT status FROM winner_claims 
-            WHERE user_id = ? AND status = 'pending'
-        ''', (session['user_id'],))
-        pending_claim = cursor.fetchone()
-        
-        # Check if user can claim reward
-        can_claim_reward = False
-        if winning_nation and session.get('nation') == winning_nation:
-            cursor.execute('''
-                SELECT id FROM winner_claims 
-                WHERE user_id = ? AND winning_nation = ?
-            ''', (session['user_id'], winning_nation))
-            existing_claim = cursor.fetchone()
-            can_claim_reward = not existing_claim
-        
-        # Get top nations
-        cursor.execute('SELECT name, flag_url, supporter_count FROM nations ORDER BY supporter_count DESC LIMIT 7')
-        top_nations = cursor.fetchall()
-        
-        # Get leaderboard - convert numeric values to proper types
-        cursor.execute('''
-            SELECT u.username, u.nation, u.avatar_url, us.months_paid, us.total_paid
-            FROM users u 
-            LEFT JOIN user_stats us ON u.id = us.user_id
-            WHERE u.nation IS NOT NULL 
-            ORDER BY us.months_paid DESC, us.total_paid DESC
-            LIMIT 10
-        ''')
-        leaderboard_data = cursor.fetchall()
-        # Convert leaderboard data to proper types
-        leaderboard = []
-        for user in leaderboard_data:
-            leaderboard.append((
-                user[0],  # username
-                user[1],  # nation
-                user[2],  # avatar_url
-                int(user[3]) if user[3] else 0,  # months_paid as int
-                float(user[4]) if user[4] else 0.00  # total_paid as float
-            ))
-        
-        # Calculate missed payments and payment status for all months
-        months_until_wc = get_months_until_world_cup()
-        current_month_index = months_until_wc.index(current_month) if current_month in months_until_wc else 0
-        
-        # Get all paid/pending months for this user
-        cursor.execute('''
-            SELECT month_year, status FROM monthly_payments 
-            WHERE user_id = ?
-        ''', (session['user_id'],))
-        user_payments = {month: status for month, status in cursor.fetchall()}
-        
-        # Identify missed months (previous months that weren't paid)
-        missed_months = []
-        payment_calendar = []
-        
-        for i, month in enumerate(months_until_wc):
-            status = user_payments.get(month, 'not_paid')
-            is_current = (month == current_month)
-            is_past = (i < current_month_index)
-            
-            payment_calendar.append({
-                'month': month,
-                'status': status,
-                'is_current': is_current,
-                'is_past': is_past
-            })
-            
-            # Track missed months (past months that are not paid or pending)
-            if is_past and status not in ['completed', 'pending']:
-                missed_months.append(month)
-        
-        # Send warning email if there are missed payments (once per login session)
-        if missed_months and 'missed_payment_warning_sent' not in session:
-            cursor.execute('SELECT email FROM users WHERE id = ?', (session['user_id'],))
-            user_email = cursor.fetchone()
-            if user_email:
-                send_missed_payment_warning(user_email[0], session['username'], missed_months)
-                session['missed_payment_warning_sent'] = True
+    # Get user stats
+    user_stats_doc = user_stats_collection.find_one({'user_id': session['user_id']})
+    user_stats = (
+        int(user_stats_doc.get('months_paid', 0)) if user_stats_doc else 0,
+        float(user_stats_doc.get('total_paid', 0.00)) if user_stats_doc else 0.00,
+        user_stats_doc.get('last_payment_month') if user_stats_doc else None
+    )
     
+    # Get payment history
+    payment_history_cursor = monthly_payments_collection.find(
+        {'user_id': session['user_id']},
+        {'month_year': 1, 'amount': 1, 'status': 1, 'payment_date': 1, 'approved_at': 1}
+    ).sort('payment_date', -1)
+    payment_history = []
+    for p in payment_history_cursor:
+        # Format datetime objects
+        payment_date = p['payment_date']
+        if isinstance(payment_date, datetime):
+            payment_date_str = payment_date.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            payment_date_str = str(payment_date) if payment_date else None
+        
+        approved_at = p.get('approved_at')
+        if approved_at and isinstance(approved_at, datetime):
+            approved_at_str = approved_at.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            approved_at_str = str(approved_at) if approved_at else None
+        
+        payment_history.append((
+            p['month_year'], 
+            p['amount'], 
+            p['status'], 
+            payment_date_str, 
+            approved_at_str
+        ))
+    
+    # Get current month payment status
+    current_month = get_current_month_year()
+    current_payment_doc = monthly_payments_collection.find_one({
+        'user_id': session['user_id'],
+        'month_year': current_month
+    })
+    current_payment = (current_payment_doc['status'],) if current_payment_doc else None
+    
+    # Check if user has pending winner claim
+    pending_claim_doc = winner_claims_collection.find_one({
+        'user_id': session['user_id'],
+        'status': 'pending'
+    })
+    pending_claim = (pending_claim_doc['status'],) if pending_claim_doc else None
+    
+    # Check if user can claim reward
+    can_claim_reward = False
+    if winning_nation and session.get('nation') == winning_nation:
+        existing_claim = winner_claims_collection.find_one({
+            'user_id': session['user_id'],
+            'winning_nation': winning_nation
+        })
+        can_claim_reward = not existing_claim
+    
+    # Get top nations
+    top_nations_cursor = nations_collection.find(
+        {},
+        {'name': 1, 'flag_url': 1, 'supporter_count': 1}
+    ).sort('supporter_count', -1).limit(7)
+    top_nations = [(n['name'], n['flag_url'], n['supporter_count']) for n in top_nations_cursor]
+    
+    # Get leaderboard
+    pipeline = [
+        {
+            '$lookup': {
+                'from': 'user_stats',
+                'localField': '_id',
+                'foreignField': 'user_id',
+                'as': 'stats'
+            }
+        },
+        {'$match': {'nation': {'$ne': None}}},
+        {'$unwind': {'path': '$stats', 'preserveNullAndEmptyArrays': True}},
+        {
+            '$project': {
+                'username': 1,
+                'nation': 1,
+                'avatar_url': 1,
+                'months_paid': {'$ifNull': ['$stats.months_paid', 0]},
+                'total_paid': {'$ifNull': ['$stats.total_paid', 0.00]}
+            }
+        },
+        {'$sort': {'months_paid': -1, 'total_paid': -1}},
+        {'$limit': 10}
+    ]
+    
+    # MongoDB aggregation doesn't work with user_id as string reference
+    # Let's use a simpler approach
+    users_with_stats = []
+    for user in users_collection.find({'nation': {'$ne': None}}, {'username': 1, 'nation': 1, 'avatar_url': 1}):
+        stats = user_stats_collection.find_one({'user_id': str(user['_id'])})
+        users_with_stats.append({
+            'username': user['username'],
+            'nation': user['nation'],
+            'avatar_url': user.get('avatar_url', 'default_avatar.png'),
+            'months_paid': int(stats.get('months_paid', 0)) if stats else 0,
+            'total_paid': float(stats.get('total_paid', 0.00)) if stats else 0.00
+        })
+    
+    # Sort and limit
+    users_with_stats.sort(key=lambda x: (-x['months_paid'], -x['total_paid']))
+    leaderboard = [
+        (u['username'], u['nation'], u['avatar_url'], u['months_paid'], u['total_paid'])
+        for u in users_with_stats[:10]
+    ]
+    
+    # Calculate missed payments and payment status for all months
     months_until_wc = get_months_until_world_cup()
+    current_month_index = months_until_wc.index(current_month) if current_month in months_until_wc else 0
+    
+    # Get all paid/pending months for this user
+    user_payments_cursor = monthly_payments_collection.find(
+        {'user_id': session['user_id']},
+        {'month_year': 1, 'status': 1}
+    )
+    user_payments = {p['month_year']: p['status'] for p in user_payments_cursor}
+    
+    # Identify missed months (previous months that weren't paid)
+    missed_months = []
+    payment_calendar = []
+    
+    for i, month in enumerate(months_until_wc):
+        status = user_payments.get(month, 'not_paid')
+        is_current = (month == current_month)
+        is_past = (i < current_month_index)
+        
+        payment_calendar.append({
+            'month': month,
+            'status': status,
+            'is_current': is_current,
+            'is_past': is_past
+        })
+        
+        # Track missed months (past months that are not paid or pending)
+        if is_past and status not in ['completed', 'pending']:
+            missed_months.append(month)
+    
+    # Send warning email if there are missed payments (once per login session)
+    if missed_months and 'missed_payment_warning_sent' not in session:
+        user = users_collection.find_one({'_id': ObjectId(session['user_id'])})
+        if user and user.get('email'):
+            send_missed_payment_warning(user['email'], session['username'], missed_months)
+            session['missed_payment_warning_sent'] = True
     
     return render_template('dashboard.html', 
                          time_left=time_left,
@@ -754,30 +769,29 @@ def pay_monthly():
     if selected_month not in months_until_wc:
         return redirect(url_for('dashboard'))
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
+    # Check if payment already exists for this month
+    existing_payment = monthly_payments_collection.find_one({
+        'user_id': session['user_id'],
+        'month_year': selected_month
+    })
+    
+    if not existing_payment:
+        # Create new payment request
+        monthly_payments_collection.insert_one({
+            'user_id': session['user_id'],
+            'month_year': selected_month,
+            'amount': 50.00,
+            'status': 'pending',
+            'payment_date': datetime.now(),
+            'approved_at': None,
+            'approved_by': None
+        })
         
-        # Check if payment already exists for this month
-        cursor.execute('''
-            SELECT id FROM monthly_payments 
-            WHERE user_id = ? AND month_year = ?
-        ''', (session['user_id'], selected_month))
-        
-        existing_payment = cursor.fetchone()
-        
-        if not existing_payment:
-            # Create new payment request
-            cursor.execute('''
-                INSERT INTO monthly_payments (user_id, month_year, amount, status)
-                VALUES (?, ?, 50.00, 'pending')
-            ''', (session['user_id'], selected_month))
-            conn.commit()
-            
-            # Send notification to admin
-            send_admin_notification(
-                "New Payment Request",
-                f"User <strong>{session['username']}</strong> has submitted a payment request for <strong>{selected_month}</strong> (₹50). Please review in admin panel."
-            )
+        # Send notification to admin
+        send_admin_notification(
+            "New Payment Request",
+            f"User <strong>{session['username']}</strong> has submitted a payment request for <strong>{selected_month}</strong> (₹50). Please review in admin panel."
+        )
     
     return redirect(url_for('payment_processing', month=selected_month))
 
@@ -800,44 +814,42 @@ def claim_reward():
     if not winning_nation or session.get('nation') != winning_nation:
         return redirect(url_for('dashboard'))
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
+    # Check if already claimed
+    existing_claim = winner_claims_collection.find_one({
+        'user_id': session['user_id'],
+        'winning_nation': winning_nation
+    })
+    
+    if not existing_claim:
+        # Calculate total pool from completed payments
+        pipeline = [
+            {'$match': {'status': 'completed'}},
+            {'$group': {'_id': None, 'total': {'$sum': '$amount'}}}
+        ]
+        result = list(monthly_payments_collection.aggregate(pipeline))
+        total_pool = result[0]['total'] if result else 0
         
-        # Check if already claimed
-        cursor.execute('''
-            SELECT id FROM winner_claims 
-            WHERE user_id = ? AND winning_nation = ?
-        ''', (session['user_id'], winning_nation))
+        # Count how many users supported the winning nation
+        winner_count = users_collection.count_documents({'nation': winning_nation})
         
-        if not cursor.fetchone():
-            # Calculate total pool from completed payments
-            cursor.execute('''
-                SELECT COALESCE(SUM(amount), 0) FROM monthly_payments 
-                WHERE status = 'completed'
-            ''')
-            total_pool = cursor.fetchone()[0]
-            
-            # Count how many users supported the winning nation
-            cursor.execute('''
-                SELECT COUNT(*) FROM users 
-                WHERE nation = ?
-            ''', (winning_nation,))
-            winner_count = cursor.fetchone()[0]
-            
-            # Calculate reward per winner
-            reward_amount = round(total_pool / winner_count, 2) if winner_count > 0 else 0
-            
-            cursor.execute('''
-                INSERT INTO winner_claims (user_id, winning_nation, reward_amount, status)
-                VALUES (?, ?, ?, 'pending')
-            ''', (session['user_id'], winning_nation, reward_amount))
-            conn.commit()
-            
-            # Notify admin about reward claim
-            send_admin_notification(
-                "New Reward Claim",
-                f"User <strong>{session['username']}</strong> has claimed a reward of <strong>₹{reward_amount}</strong> for supporting <strong>{winning_nation}</strong>. Please review in admin panel."
-            )
+        # Calculate reward per winner
+        reward_amount = round(total_pool / winner_count, 2) if winner_count > 0 else 0
+        
+        winner_claims_collection.insert_one({
+            'user_id': session['user_id'],
+            'winning_nation': winning_nation,
+            'reward_amount': reward_amount,
+            'status': 'pending',
+            'claimed_at': datetime.now(),
+            'approved_at': None,
+            'approved_by': None
+        })
+        
+        # Notify admin about reward claim
+        send_admin_notification(
+            "New Reward Claim",
+            f"User <strong>{session['username']}</strong> has claimed a reward of <strong>₹{reward_amount}</strong> for supporting <strong>{winning_nation}</strong>. Please review in admin panel."
+        )
     
     return redirect(url_for('reward_processing'))
 
@@ -856,11 +868,10 @@ def update_profile():
     
     avatar_url = request.form.get('avatar_url')
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        cursor.execute('UPDATE users SET avatar_url = ? WHERE id = ?',
-                     (avatar_url, session['user_id']))
-        conn.commit()
+    users_collection.update_one(
+        {'_id': ObjectId(session['user_id'])},
+        {'$set': {'avatar_url': avatar_url}}
+    )
     
     session['avatar_url'] = avatar_url
     
@@ -894,33 +905,63 @@ def user_profile():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT u.username, u.email, u.nation, u.is_premium, u.created_at,
-                   us.months_paid, us.total_paid, us.last_payment_month
-            FROM users u
-            LEFT JOIN user_stats us ON u.id = us.user_id
-            WHERE u.id = ?
-        ''', (session['user_id'],))
-        user_data = cursor.fetchone()
+    # Get user data
+    user = users_collection.find_one({'_id': ObjectId(session['user_id'])})
+    user_stats = user_stats_collection.find_one({'user_id': session['user_id']})
+    
+    # Format created_at as string
+    created_at = user.get('created_at')
+    if created_at and isinstance(created_at, datetime):
+        created_at_str = created_at.strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        created_at_str = str(created_at) if created_at else None
+    
+    # Create user_data tuple to match template expectations
+    user_data = (
+        user['username'],
+        user['email'],
+        user.get('nation'),
+        user.get('is_premium', False),
+        created_at_str,
+        user_stats.get('months_paid', 0) if user_stats else 0,
+        user_stats.get('total_paid', 0.00) if user_stats else 0.00,
+        user_stats.get('last_payment_month') if user_stats else None
+    )
+    
+    # Get nation flag
+    nation_flag = None
+    if user_data[2]:  # if user has a nation
+        nation = nations_collection.find_one({'name': user_data[2]})
+        if nation:
+            nation_flag = nation['flag_url']
+    
+    # Get payment history
+    payment_history_cursor = monthly_payments_collection.find(
+        {'user_id': session['user_id']},
+        {'month_year': 1, 'amount': 1, 'status': 1, 'payment_date': 1, 'approved_at': 1}
+    ).sort('payment_date', -1)
+    payment_history = []
+    for p in payment_history_cursor:
+        # Format datetime objects as strings
+        payment_date = p['payment_date']
+        if isinstance(payment_date, datetime):
+            payment_date_str = payment_date.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            payment_date_str = str(payment_date) if payment_date else None
         
-        # Get nation flag
-        nation_flag = None
-        if user_data and user_data[2]:  # if user has a nation
-            cursor.execute('SELECT flag_url FROM nations WHERE name = ?', (user_data[2],))
-            flag_result = cursor.fetchone()
-            if flag_result:
-                nation_flag = flag_result[0]
+        approved_at = p.get('approved_at')
+        if approved_at and isinstance(approved_at, datetime):
+            approved_at_str = approved_at.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            approved_at_str = str(approved_at) if approved_at else None
         
-        # Get payment history
-        cursor.execute('''
-            SELECT month_year, amount, status, payment_date, approved_at
-            FROM monthly_payments 
-            WHERE user_id = ? 
-            ORDER BY payment_date DESC
-        ''', (session['user_id'],))
-        payment_history = cursor.fetchall()
+        payment_history.append((
+            p['month_year'], 
+            p['amount'], 
+            p['status'], 
+            payment_date_str, 
+            approved_at_str
+        ))
     
     return render_template('user_profile.html', user_data=user_data, payment_history=payment_history, nation_flag=nation_flag)
 
@@ -929,59 +970,87 @@ def admin_panel():
     if 'user_id' not in session or not session.get('is_admin'):
         return redirect(url_for('login'))
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        
-        # Get pending payments with user info
-        cursor.execute('''
-            SELECT mp.id, mp.user_id, u.username, u.nation, mp.month_year, mp.amount, mp.payment_date
-            FROM monthly_payments mp
-            JOIN users u ON mp.user_id = u.id
-            WHERE mp.status = 'pending'
-            ORDER BY mp.payment_date DESC
-        ''')
-        pending_payments = cursor.fetchall()
-        
-        # Get pending reward claims
-        cursor.execute('''
-            SELECT wc.id, u.username, wc.winning_nation, wc.reward_amount, wc.claimed_at
-            FROM winner_claims wc
-            JOIN users u ON wc.user_id = u.id
-            WHERE wc.status = 'pending'
-            ORDER BY wc.claimed_at DESC
-        ''')
-        pending_rewards = cursor.fetchall()
-        
-        # Get all users with their stats
-        cursor.execute('''
-            SELECT u.id, u.username, u.nation, u.is_premium, 
-                   us.months_paid, us.total_paid, us.last_payment_month
-            FROM users u 
-            LEFT JOIN user_stats us ON u.id = us.user_id
-            WHERE u.nation IS NOT NULL
-        ''')
-        users = cursor.fetchall()
-        
-        # Get nations for winner selection
-        cursor.execute('SELECT id, name FROM nations')
-        nations = cursor.fetchall()
-        
-        # Get payment statistics
-        cursor.execute('''
-            SELECT 
-                COUNT(*) as total_payments,
-                SUM(amount) as total_amount,
-                COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_payments,
-                COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_payments
-            FROM monthly_payments
-        ''')
-        payment_stats = cursor.fetchone()
+    # Get pending payments with user info
+    pipeline = [
+        {'$match': {'status': 'pending'}},
+        {'$sort': {'payment_date': -1}}
+    ]
+    pending_payments_data = []
+    for payment in monthly_payments_collection.find({'status': 'pending'}).sort('payment_date', -1):
+        user = users_collection.find_one({'_id': ObjectId(payment['user_id'])})
+        if user:
+            # Format payment_date
+            payment_date = payment['payment_date']
+            if isinstance(payment_date, datetime):
+                payment_date_str = payment_date.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                payment_date_str = str(payment_date) if payment_date else None
+            
+            pending_payments_data.append((
+                str(payment['_id']),
+                payment['user_id'],
+                user['username'],
+                user.get('nation'),
+                payment['month_year'],
+                payment['amount'],
+                payment_date_str
+            ))
+    
+    # Get pending reward claims
+    pending_rewards_data = []
+    for claim in winner_claims_collection.find({'status': 'pending'}).sort('claimed_at', -1):
+        user = users_collection.find_one({'_id': ObjectId(claim['user_id'])})
+        if user:
+            # Format claimed_at
+            claimed_at = claim['claimed_at']
+            if isinstance(claimed_at, datetime):
+                claimed_at_str = claimed_at.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                claimed_at_str = str(claimed_at) if claimed_at else None
+            
+            pending_rewards_data.append((
+                str(claim['_id']),
+                user['username'],
+                claim['winning_nation'],
+                claim['reward_amount'],
+                claimed_at_str
+            ))
+    
+    # Get all users with their stats
+    users_data = []
+    for user in users_collection.find({'nation': {'$ne': None}}):
+        stats = user_stats_collection.find_one({'user_id': str(user['_id'])})
+        users_data.append((
+            str(user['_id']),
+            user['username'],
+            user.get('nation'),
+            user.get('is_premium', False),
+            stats.get('months_paid', 0) if stats else 0,
+            stats.get('total_paid', 0.00) if stats else 0.00,
+            stats.get('last_payment_month') if stats else None
+        ))
+    
+    # Get nations for winner selection
+    nations_data = [(str(n['_id']), n['name']) for n in nations_collection.find()]
+    
+    # Get payment statistics
+    total_payments = monthly_payments_collection.count_documents({})
+    completed_payments = monthly_payments_collection.count_documents({'status': 'completed'})
+    pending_payments_count = monthly_payments_collection.count_documents({'status': 'pending'})
+    
+    pipeline = [
+        {'$group': {'_id': None, 'total': {'$sum': '$amount'}}}
+    ]
+    result = list(monthly_payments_collection.aggregate(pipeline))
+    total_amount = result[0]['total'] if result else 0
+    
+    payment_stats = (total_payments, total_amount, completed_payments, pending_payments_count)
     
     return render_template('admin_panel.html', 
-                         pending_payments=pending_payments,
-                         pending_rewards=pending_rewards,
-                         users=users,
-                         nations=nations,
+                         pending_payments=pending_payments_data,
+                         pending_rewards=pending_rewards_data,
+                         users=users_data,
+                         nations=nations_data,
                          payment_stats=payment_stats,
                          winning_nation=get_winning_nation())
 
@@ -992,45 +1061,53 @@ def approve_payment():
     
     payment_id = request.form.get('payment_id')
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
+    # Get payment and user details
+    payment = monthly_payments_collection.find_one({'_id': ObjectId(payment_id)})
+    
+    if payment:
+        user = users_collection.find_one({'_id': ObjectId(payment['user_id'])})
         
-        # Get payment and user details
-        cursor.execute('''
-            SELECT mp.user_id, mp.month_year, mp.amount, u.username, u.email 
-            FROM monthly_payments mp
-            JOIN users u ON mp.user_id = u.id
-            WHERE mp.id = ?
-        ''', (payment_id,))
-        payment = cursor.fetchone()
-        
-        if payment:
-            user_id, month_year, amount, username, email = payment
+        if user:
+            user_id = payment['user_id']
+            month_year = payment['month_year']
+            amount = payment['amount']
+            username = user['username']
+            email = user['email']
             
             # Update payment status
-            cursor.execute('''
-                UPDATE monthly_payments 
-                SET status = 'completed', approved_at = CURRENT_TIMESTAMP, approved_by = ?
-                WHERE id = ?
-            ''', (session['user_id'], payment_id))
+            monthly_payments_collection.update_one(
+                {'_id': ObjectId(payment_id)},
+                {
+                    '$set': {
+                        'status': 'completed',
+                        'approved_at': datetime.now(),
+                        'approved_by': session['user_id']
+                    }
+                }
+            )
             
             # Update user stats
-            cursor.execute('''
-                UPDATE user_stats 
-                SET months_paid = months_paid + 1,
-                    total_paid = total_paid + ?,
-                    last_payment_month = ?
-                WHERE user_id = ?
-            ''', (amount, month_year, user_id))
+            user_stats_collection.update_one(
+                {'user_id': user_id},
+                {
+                    '$inc': {
+                        'months_paid': 1,
+                        'total_paid': amount
+                    },
+                    '$set': {
+                        'last_payment_month': month_year
+                    }
+                }
+            )
             
             # Check if user should get premium status (after 3 payments)
-            cursor.execute('SELECT months_paid FROM user_stats WHERE user_id = ?', (user_id,))
-            user_stats = cursor.fetchone()
+            user_stats = user_stats_collection.find_one({'user_id': user_id})
             
-            if user_stats and user_stats[0] >= 3:
-                cursor.execute('UPDATE users SET is_premium = TRUE WHERE id = ?', (user_id,))
-            
-            conn.commit()
+            if user_stats and user_stats.get('months_paid', 0) >= 3:
+                users_collection.update_one(
+                    {'_id': ObjectId(user_id)},
+                    {'$set': {'is_premium': True}}
+                )
             
             # Send approval email to user
             send_payment_approved(email, username, month_year, amount)
@@ -1046,22 +1123,21 @@ def reject_payment():
     
     payment_id = request.form.get('payment_id')
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
+    # Get user details
+    payment = monthly_payments_collection.find_one({'_id': ObjectId(payment_id)})
+    
+    if payment:
+        user = users_collection.find_one({'_id': ObjectId(payment['user_id'])})
         
-        # Get user details
-        cursor.execute('''
-            SELECT mp.month_year, u.username, u.email 
-            FROM monthly_payments mp
-            JOIN users u ON mp.user_id = u.id
-            WHERE mp.id = ?
-        ''', (payment_id,))
-        payment = cursor.fetchone()
-        
-        if payment:
-            month_year, username, email = payment
-            cursor.execute('UPDATE monthly_payments SET status = "rejected" WHERE id = ?', (payment_id,))
-            conn.commit()
+        if user:
+            month_year = payment['month_year']
+            username = user['username']
+            email = user['email']
+            
+            monthly_payments_collection.update_one(
+                {'_id': ObjectId(payment_id)},
+                {'$set': {'status': 'rejected'}}
+            )
             
             # Send rejection email
             send_payment_rejected(email, username, month_year)
@@ -1080,32 +1156,33 @@ def set_winner():
     
     winner_id = request.form.get('winner_id')
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT name FROM nations WHERE id = ?', (winner_id,))
-        winner = cursor.fetchone()
+    winner = nations_collection.find_one({'_id': ObjectId(winner_id)})
+    
+    if winner:
+        winning_nation = winner['name']
+        app_settings_collection.update_one(
+            {},
+            {
+                '$set': {
+                    'winning_nation': winning_nation,
+                    'winner_declared_at': datetime.now(),
+                    'declared_by': session['user_id']
+                }
+            }
+        )
         
-        if winner:
-            winning_nation = winner[0]
-            cursor.execute('''
-                UPDATE app_settings 
-                SET winning_nation = ?, winner_declared_at = CURRENT_TIMESTAMP, declared_by = ?
-                WHERE id = 1
-            ''', (winning_nation, session['user_id']))
-            conn.commit()
-            
-            # Send emails to all users
-            try:
-                send_winner_announcement_to_winners(winning_nation)
-                send_winner_announcement_to_losers(winning_nation)
-                send_admin_notification(
-                    "Winner Declared",
-                    f"World Cup winner has been set to <strong>{winning_nation}</strong>. All users have been notified via email."
-                )
-            except Exception as e:
-                print(f"Error sending winner announcement emails: {e}")
-            
-            return jsonify({'success': True, 'message': f'World Cup Winner set to {winning_nation}! All users have been notified.'})
+        # Send emails to all users
+        try:
+            send_winner_announcement_to_winners(winning_nation)
+            send_winner_announcement_to_losers(winning_nation)
+            send_admin_notification(
+                "Winner Declared",
+                f"World Cup winner has been set to <strong>{winning_nation}</strong>. All users have been notified via email."
+            )
+        except Exception as e:
+            print(f"Error sending winner announcement emails: {e}")
+        
+        return jsonify({'success': True, 'message': f'World Cup Winner set to {winning_nation}! All users have been notified.'})
     
     return jsonify({'error': 'Invalid nation'}), 400
 
@@ -1116,27 +1193,27 @@ def approve_reward():
     
     claim_id = request.form.get('claim_id')
     
-    with sqlite3.connect(app.config['DATABASE']) as conn:
-        cursor = conn.cursor()
+    # Get claim and user details
+    claim = winner_claims_collection.find_one({'_id': ObjectId(claim_id)})
+    
+    if claim:
+        user = users_collection.find_one({'_id': ObjectId(claim['user_id'])})
         
-        # Get claim and user details
-        cursor.execute('''
-            SELECT wc.reward_amount, u.username, u.email
-            FROM winner_claims wc
-            JOIN users u ON wc.user_id = u.id
-            WHERE wc.id = ?
-        ''', (claim_id,))
-        claim = cursor.fetchone()
-        
-        if claim:
-            reward_amount, username, email = claim
+        if user:
+            reward_amount = claim['reward_amount']
+            username = user['username']
+            email = user['email']
             
-            cursor.execute('''
-                UPDATE winner_claims 
-                SET status = 'completed', approved_at = CURRENT_TIMESTAMP, approved_by = ?
-                WHERE id = ?
-            ''', (session['user_id'], claim_id))
-            conn.commit()
+            winner_claims_collection.update_one(
+                {'_id': ObjectId(claim_id)},
+                {
+                    '$set': {
+                        'status': 'completed',
+                        'approved_at': datetime.now(),
+                        'approved_by': session['user_id']
+                    }
+                }
+            )
             
             # Send approval email
             send_reward_approved(email, username, reward_amount)
@@ -1150,4 +1227,4 @@ def logout():
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=80, debug=False)
+    app.run(host='0.0.0.0', port=8000, debug=False)
