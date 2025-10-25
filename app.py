@@ -25,6 +25,29 @@ def add_header(response):
 
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
 
+# Hosted/development redirect configuration for OAuth
+# Use ISDEV env var to control whether we use a local redirect (development)
+# or the hosted production redirect (e.g. https://wc2026.onrender.com/callback)
+HOSTED_URL = os.getenv('HOSTED_URL', 'https://wc2026.onrender.com')
+# ISDEV: treat missing value as True for local development; set ISDEV=false in production
+ISDEV = os.getenv('ISDEV', 'True').lower() in ('1', 'true', 'yes')
+DEV_REDIRECT_URL = os.getenv('DEV_REDIRECT_URL', f'http://localhost:8000/callback')
+PROD_REDIRECT_URL = os.getenv('PROD_REDIRECT_URL', f'{HOSTED_URL}/callback')
+
+# Configure session cookie behavior so the OAuth state cookie survives the
+# cross-site redirect back from Google. Browsers require 'Secure' when
+# using 'SameSite=None'. For local development we keep 'Lax' to avoid needing
+# HTTPS. In production (ISDEV=False) we set SameSite=None and Secure=True.
+if ISDEV:
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = False
+else:
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+    app.config['SESSION_COOKIE_SECURE'] = True
+
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+
 # OAuth (Google) configuration
 oauth = OAuth(app)
 oauth.register(
@@ -704,9 +727,37 @@ def login_google():
     nonce = secrets.token_urlsafe(16)
     session['oauth_nonce'] = nonce
 
-    redirect_uri = url_for('auth_callback', _external=True)
-    # Pass the nonce to the authorize call so Google will include it in the ID token
-    return oauth.google.authorize_redirect(redirect_uri, nonce=nonce)
+    # Also generate and store an explicit state value so we can compare later
+    state = secrets.token_urlsafe(16)
+    session['oauth_state'] = state
+
+    # Determine redirect URI based on environment flag
+    # If DEV_REDIRECT_URL/PROD_REDIRECT_URL were explicitly set in ENV, use them.
+    # Otherwise use the current request host via url_for(..., _external=True)
+    if ISDEV:
+        # Use explicit DEV_REDIRECT_URL only if it was set in the environment
+        if 'DEV_REDIRECT_URL' in os.environ:
+            redirect_uri = DEV_REDIRECT_URL
+        else:
+            # Build redirect using current request host (keeps localhost vs 127.0.0.1 consistent)
+            redirect_uri = url_for('auth_callback', _external=True)
+    else:
+        # Use explicit PROD_REDIRECT_URL only if it was set in the environment
+        if 'PROD_REDIRECT_URL' in os.environ:
+            redirect_uri = PROD_REDIRECT_URL
+        else:
+            redirect_uri = url_for('auth_callback', _external=True)
+
+    # Debug info to help diagnose state mismatches locally
+    try:
+        print(f"login_google: redirect_uri={redirect_uri} state={state} nonce={nonce} session_keys={list(session.keys())}")
+    except Exception:
+        pass
+
+    # Pass the nonce and the explicit state to the authorize call so Google will
+    # include them in the response. The redirect_uri must match an authorized
+    # redirect URI in your Google Cloud Console.
+    return oauth.google.authorize_redirect(redirect_uri, nonce=nonce, state=state)
 
 
 @app.route('/callback')
@@ -714,11 +765,19 @@ def auth_callback():
     """Handle the OAuth2 callback from Google, create or lookup the user,
     and establish a session.
     """
+    # Debug incoming state vs stored state to diagnose CSRF mismatches
+    try:
+        incoming_state = request.args.get('state')
+        print(f"auth_callback: incoming_state={incoming_state} session_oauth_state={session.get('oauth_state')} session_keys={list(session.keys())}")
+    except Exception:
+        pass
+
     try:
         token = oauth.google.authorize_access_token()
     except Exception as e:
         print('Google authorize_access_token failed:', e)
-        return render_template('login.html', error='Google sign-in failed')
+        # If CSRF state mismatch occurs, include debug hint in the template
+        return render_template('login.html', error='Google sign-in failed (state mismatch). Try clearing cookies or use the exact host used for redirect URI.')
 
     # Try to fetch userinfo via the userinfo endpoint
     # Prefer parsing the ID token (OpenID Connect). This avoids relying on
@@ -1891,4 +1950,4 @@ if __name__ == '__main__':
     except Exception as e:
         print('Could not start monthly scheduler thread:', e)
 
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    app.run(host='0.0.0.0', port=8000, debug=True)
