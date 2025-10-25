@@ -157,12 +157,23 @@ def send_payment_reminder(email, username, month_year, reminder_type='start'):
 
 
 # NoParam email verification helper
-def verify_email_with_noparam(email: str, min_score: int = 80):
+def verify_email_with_noparam(email: str, min_score: int = None):
     """Return (is_valid: bool, message: str, details: dict).
     Tries NOPARAM_API_KEY first and falls back to NOPARAM_API_KEY1 if provided.
     If no keys are configured, verification is skipped (signup allowed).
     On API/network errors for a key, the function will try the next key.
+
+    IMPORTANT: This function enforces that details.mailbox_exists must be True
+    for the email to be accepted. If mailbox_exists is False (or MX records are
+    missing), the function returns (False, message, details).
     """
+    # Allow overriding min_score via env var; default to 80 if not provided
+    if min_score is None:
+        try:
+            min_score = int(os.getenv('NOPARAM_MIN_SCORE', '80'))
+        except Exception:
+            min_score = 80
+
     keys = [os.getenv('NOPARAM_API_KEY'), os.getenv('NOPARAM_API_KEY1')]
     keys = [k for k in keys if k]
     if not keys:
@@ -184,16 +195,36 @@ def verify_email_with_noparam(email: str, min_score: int = 80):
             data = resp.json()
 
             details = data.get('details', {})
-            score = int(data.get('score', 0) or 0)
-            mailbox_exists = details.get('mailbox_exists') is True
+            # Normalize score defensively
+            try:
+                score = int(data.get('score', 0) or 0)
+            except Exception:
+                score = 0
+
+            # Explicit checks required by policy: MX and mailbox existence
             mx_records = details.get('mx_records') is True
+            mailbox_exists = details.get('mailbox_exists') is True
 
             if not mx_records:
-                return (False, 'Email domain has no mail servers (MX records). Please provide a valid email address.', data)
+                return (
+                    False,
+                    'Email domain has no mail servers (MX records). Please provide a valid email address.',
+                    data,
+                )
+
             if not mailbox_exists:
-                return (False, 'Mailbox does not appear to exist. Please provide an email that can receive messages.', data)
+                return (
+                    False,
+                    'Mailbox does not appear to exist. Please provide an email that can receive messages.',
+                    data,
+                )
+
             if score < min_score:
-                return (False, f'Email looks low-quality (score {score}). Please provide a valid email address.', data)
+                return (
+                    False,
+                    f'Email looks low-quality (score {score}). Please provide a valid email address.',
+                    data,
+                )
 
             return (True, 'Valid email', data)
 

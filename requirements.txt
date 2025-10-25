@@ -5,4 +5,3 @@ gunicorn
 pymongo[srv]
 razorpay
 flask-compress
-gevent
