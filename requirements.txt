@@ -3,3 +3,6 @@ flask-mail==0.9.1
 python-dotenv==1.0.0
 gunicorn
 pymongo[srv]
+razorpay
+flask-compress
+gevent

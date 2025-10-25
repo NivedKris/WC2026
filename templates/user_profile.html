@@ -5,14 +5,15 @@
 {% block content %}
 <div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
     <!-- Video Background -->
-    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+    <video autoplay loop muted playsinline preload="none" class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+        <source src="https://cdn.jsdelivr.net/gh/NivedKris/cdn@main/background.mp4" type="video/mp4">
         <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
     </video>
     
     <!-- Content Layer -->
     <div class="relative z-10">
     <div class="flex items-center bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-20">
-        <a href="{{ url_for('dashboard') }}" class="text-black dark:text-white flex size-12 shrink-0 items-center">
+        <a href="{{ url_for('dashboard') }}" onclick="showDashboardLoading(); return true;" class="text-black dark:text-white flex size-12 shrink-0 items-center dashboard-link">
             <span class="material-symbols-outlined text-2xl">arrow_back</span>
         </a>
         <h2 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">My Profile</h2>
@@ -55,7 +56,7 @@
 
             <!-- Customize Profile Button -->
             <div class="mt-4">
-                <a href="{{ url_for('profile_customization') }}" class="flex items-center justify-center gap-2 w-full bg-primary text-white font-bold py-2 px-4 rounded-lg no-underline">
+                <a href="{{ url_for('profile_customization') }}" onclick="showProfileLoading(); return true;" class="flex items-center justify-center gap-2 w-full bg-primary text-white font-bold py-2 px-4 rounded-lg no-underline profile-link">
                     <span class="material-symbols-outlined">palette</span>
                     Customize Profile
                 </a>

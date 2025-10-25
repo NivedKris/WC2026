@@ -65,7 +65,7 @@
     <!-- Header -->
     <div class="flex items-center bg-black/20 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-10">
         <div class="flex size-12 shrink-0 items-center">
-            <a href="{{ url_for('user_profile') }}">
+            <a href="{{ url_for('user_profile') }}" onclick="showProfileLoading(); return true;" class="profile-link">
                 <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="Avatar">
             </a>
         </div>
@@ -148,7 +148,8 @@
 <!-- NORMAL DASHBOARD - Before Winner Declaration -->
 <div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
     <!-- Video Background -->
-    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-20">
+    <video autoplay loop muted playsinline preload="none" class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-20">
+        <source src="https://cdn.jsdelivr.net/gh/NivedKris/cdn@main/background.mp4" type="video/mp4">
         <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
     </video>
     
@@ -156,7 +157,7 @@
     <div class="relative z-10 flex h-auto min-h-screen w-full flex-col">
     <div class="flex items-center bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-20">
     <div class="flex size-12 shrink-0 items-center">
-        <a href="{{ url_for('user_profile') }}">
+        <a href="{{ url_for('user_profile') }}" onclick="showProfileLoading(); return true;" class="profile-link">
             <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="Avatar">
         </a>
     </div>
@@ -189,12 +190,17 @@
                     </div>
                 </div>
                 {% elif current_payment[0] == 'pending' %}
-                <div class="bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
-                    <div class="flex items-center gap-2">
-                        <span class="material-symbols-outlined text-yellow-500">pending</span>
-                        <span class="text-yellow-800 dark:text-yellow-300 font-medium">Payment Pending Approval for {{ current_month }}</span>
+                <div class="bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mb-3">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-symbols-outlined text-yellow-500">info</span>
+                        <span class="text-yellow-800 dark:text-yellow-300 font-medium">Payment Not Completed</span>
                     </div>
+                    <p class="text-yellow-700 dark:text-yellow-400 text-xs">You started a payment but didn't complete it. Click below to try again.</p>
                 </div>
+                <a href="{{ url_for('pay_monthly', month=current_month) }}" onclick="setButtonLoading(this); return true;" class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary h-12 text-white font-bold text-base leading-normal tracking-[0.015em] no-underline">
+                    <span class="material-symbols-outlined">refresh</span>
+                    <span>Retry Payment for {{ current_month }}</span>
+                </a>
                 {% endif %}
             {% else %}
             <a href="{{ url_for('pay_monthly') }}" onclick="setButtonLoading(this); return true;" class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary h-12 text-white font-bold text-base leading-normal tracking-[0.015em] no-underline">
@@ -336,7 +342,7 @@
                                 {% else %}text-gray-600 dark:text-gray-400
                                 {% endif %}">
                                 {% if month_data.status == 'completed' %}Paid ✓
-                                {% elif month_data.status == 'pending' %}Pending Approval
+                                {% elif month_data.status == 'pending' %}Retry Payment
                                 {% elif month_data.is_past %}Missed
                                 {% elif month_data.is_current %}Pay Now
                                 {% else %}Upcoming
@@ -345,7 +351,16 @@
                         </div>
                     </div>
                     
-                    {% if month_data.status not in ['completed', 'pending'] %}
+                    {% if month_data.status == 'completed' %}
+                    <!-- No button for completed payments -->
+                    {% elif month_data.status == 'pending' %}
+                    <!-- Retry button for pending payments -->
+                    <a href="{{ url_for('pay_monthly', month=month_data.month) }}" onclick="setButtonLoading(this); return true;" class="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs no-underline flex items-center gap-1">
+                        <span class="material-symbols-outlined text-sm">refresh</span>
+                        Retry
+                    </a>
+                    {% else %}
+                    <!-- Pay button for unpaid months -->
                     <a href="{{ url_for('pay_monthly', month=month_data.month) }}" onclick="setButtonLoading(this); return true;" class="
                         {% if month_data.is_past %}
                         bg-red-600 hover:bg-red-700

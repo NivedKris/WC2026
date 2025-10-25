@@ -14,6 +14,28 @@
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     
     <title>{% block title %}WC 2026 - May Your Nation Lead You to Glory{% endblock %}</title>
+    <!-- If user is returning from Razorpay, prevent initial page paint and show a processing overlay immediately -->
+    <style id="rp-early-style">.rp-hide body > *{visibility:hidden !important;}</style>
+    <script>
+        (function(){
+            try {
+                var _f = null;
+                try { _f = sessionStorage.getItem('razorpay_checkout_opened'); } catch(e) { _f = null; }
+                if (_f) {
+                    // prevent the page from painting underlying content
+                    document.documentElement.classList.add('rp-hide');
+                    // inject an immediate overlay element
+                    var ol = document.createElement('div');
+                    ol.id = 'paymentProcessingOverlay';
+                    ol.className = 'rp-overlay';
+                    ol.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
+                    ol.innerHTML = '<div class="rp-card text-center rounded-lg p-6 bg-slate-900/70 backdrop-blur-sm">\n                            <div class="mb-4 flex h-24 w-24 items-center justify-center mx-auto">\n                                <div class="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>\n                                <span class="material-symbols-outlined text-4xl text-primary animate-pulse">payments</span>\n                            </div>\n                            <p class="text-white text-lg font-semibold mb-1">Processing your payment...</p>\n                            <p class="text-blue-300 text-sm">Confirming with Razorpay — this should only take a moment.</p>\n                        </div>';
+                    try { document.documentElement.appendChild(ol); } catch(e) { try { document.body.appendChild(ol); } catch(e) {} }
+                    setTimeout(function(){ try{ ol.classList.add('rp-visible'); }catch(e){} }, 20);
+                }
+            } catch(e) { /* ignore */ }
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
@@ -36,6 +58,11 @@
         }
     </script>
     <style>
+        /* Processing overlay entrance animation (used when returning from Razorpay) */
+        .rp-overlay { opacity: 0; transform: scale(0.98); transition: opacity 260ms ease, transform 260ms cubic-bezier(.2,.9,.2,1); }
+        .rp-overlay.rp-visible { opacity: 1; transform: scale(1); }
+        .rp-card { transition: transform 260ms ease; }
+
         body { min-height: max(884px, 100dvh); }
         .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }
         .footer-branding {
@@ -99,7 +126,7 @@
             scrollbar-color: #1173d4 rgba(16, 25, 34, 0.5);
         }
     </style>
-    
+
     <script>
         // Global loading function
         function setButtonLoading(button, loading = true) {
@@ -116,6 +143,64 @@
             }
         }
         
+        // Dashboard loading overlay
+        function showDashboardLoading() {
+            const overlay = document.createElement('div');
+            overlay.id = 'dashboardLoadingOverlay';
+            overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center';
+            overlay.innerHTML = `
+                <div class="text-center">
+                    <div class="relative mb-6 flex h-32 w-32 items-center justify-center mx-auto">
+                        <div class="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+                        <span class="material-symbols-outlined text-5xl text-primary animate-pulse">sports_soccer</span>
+                    </div>
+                    <p class="text-white text-xl font-bold mb-2">Loading Dashboard...</p>
+                    <p class="text-blue-300 text-sm">Preparing your World Cup experience</p>
+                    <div class="mt-4 flex items-center justify-center gap-2">
+                        <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                        <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                        <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+
+        // Profile loading overlay
+        function showProfileLoading() {
+            const overlay = document.createElement('div');
+            overlay.id = 'profileLoadingOverlay';
+            overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center';
+            overlay.innerHTML = `
+                <div class="text-center">
+                    <div class="relative mb-6 flex h-32 w-32 items-center justify-center mx-auto">
+                        <div class="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+                        <span class="material-symbols-outlined text-5xl text-primary animate-pulse">person</span>
+                    </div>
+                    <p class="text-white text-xl font-bold mb-2">Loading Profile...</p>
+                    <p class="text-blue-300 text-sm">Fetching your profile details</p>
+                    <div class="mt-4 flex items-center justify-center gap-2">
+                        <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                        <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                        <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        
+        // Helper function to redirect to dashboard with loading
+        function goToDashboard() {
+            showDashboardLoading();
+            window.location.href = '/dashboard';
+        }
+
+        // Helper function to redirect to profile with loading
+        function goToProfile() {
+            showProfileLoading();
+            window.location.href = '/user_profile';
+        }
+        
         // Form submit with loading
         function handleFormSubmit(form) {
             const submitBtn = form.querySelector('button[type="submit"]');
@@ -129,6 +214,25 @@
             document.querySelectorAll('form').forEach(form => {
                 form.addEventListener('submit', function() {
                     handleFormSubmit(this);
+                });
+            });
+            // Attach loading overlay to all .profile-link
+            document.querySelectorAll('.profile-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    // prevent default navigation so overlay can render
+                    e.preventDefault();
+                    showProfileLoading();
+                    const href = this.getAttribute('href') || this.href;
+                    setTimeout(() => { window.location.href = href; }, 80);
+                });
+            });
+            // Attach loading overlay to all .dashboard-link
+            document.querySelectorAll('.dashboard-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    showDashboardLoading();
+                    const href = this.getAttribute('href') || this.href;
+                    setTimeout(() => { window.location.href = href; }, 80);
                 });
             });
         });

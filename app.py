@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_from_directory
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
 from pymongo import MongoClient
@@ -7,14 +7,29 @@ import os
 import json
 from dotenv import load_dotenv
 import hashlib
+import razorpay
+from flask_compress import Compress
+import requests
+import re
 
 load_dotenv()
+app = Flask(__name__, static_folder="static", static_url_path="/static")
+Compress(app)
+@app.after_request
+def add_header(response):
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=31536000'
+    return response
 
-app = Flask(__name__)
+
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
 
+# Flask optimizations for production
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # Cache static files for 1 year (in seconds)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max request size
+
 # MongoDB Atlas configuration
-MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb+srv://markorganisation:nithu2003@cluster0.tzcwp1s.mongodb.net/?appName=Cluster0')
+MONGODB_URI = os.getenv('MONGODB_URI')
 client = MongoClient(MONGODB_URI)
 db = client['wc2026']
 
@@ -25,6 +40,11 @@ monthly_payments_collection = db['monthly_payments']
 user_stats_collection = db['user_stats']
 winner_claims_collection = db['winner_claims']
 app_settings_collection = db['app_settings']
+
+# Razorpay configuration
+RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID')
+RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 # Mail configuration
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
@@ -79,18 +99,27 @@ def send_signup_email(email, username):
     """
     return send_email(subject, [email], html)
 
-def send_payment_reminder(email, username, month_year):
+def send_payment_reminder(email, username, month_year, reminder_type='start'):
+    """Send a reminder email to a single user. reminder_type in ('start','end') affects wording."""
     subject = f"Payment Reminder - {month_year}"
+    app_link = 'https://wc2026.onrender.com/'
+    if reminder_type == 'end':
+        lead = f"It's almost the end of {month_year}."
+        cta_text = 'Pay now to ensure your support is recorded for this month'
+    else:
+        lead = f"Welcome to {month_year}."
+        cta_text = 'Please make your monthly payment to support your nation'
+
     html = f"""
     <html>
         <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
             <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px;">
                 <h2 style="color: #1173d4;">Monthly Payment Reminder 💰</h2>
                 <p>Hi <strong>{username}</strong>,</p>
-                <p>This is a friendly reminder that your monthly payment of <strong>₹50</strong> for <strong>{month_year}</strong> is due.</p>
-                <p>Login to your dashboard to make the payment and continue supporting your nation!</p>
-                <a href="#" style="display: inline-block; background-color: #1173d4; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin-top: 20px;">Make Payment</a>
-                <p style="margin-top: 30px;">Best regards,<br><strong>WC 2026 Team</strong></p>
+                <p>{lead} This is a friendly reminder that your monthly payment of <strong>₹50</strong> for <strong>{month_year}</strong> is still outstanding.</p>
+                <p style="font-weight:600;">{cta_text}.</p>
+                <p style="margin-top:12px;"><a href="{app_link}" style="display: inline-block; background-color: #1173d4; color: white; padding: 12px 20px; text-decoration: none; border-radius: 6px;">Open WC2026 App</a></p>
+                <p style="margin-top: 20px;">Best regards,<br><strong>WC 2026 Team</strong></p>
                 <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
                     <p style="font-size: 12px; color: #999;">Built by <span style="color: #1173d4; font-weight: bold;">MARK.ORG</span></p>
                 </div>
@@ -99,6 +128,67 @@ def send_payment_reminder(email, username, month_year):
     </html>
     """
     return send_email(subject, [email], html)
+
+
+# NoParam email verification helper
+def verify_email_with_noparam(email: str, min_score: int = 80):
+    """Return (is_valid: bool, message: str, details: dict).
+    Tries NOPARAM_API_KEY first and falls back to NOPARAM_API_KEY1 if provided.
+    If no keys are configured, verification is skipped (signup allowed).
+    On API/network errors for a key, the function will try the next key.
+    """
+    keys = [os.getenv('NOPARAM_API_KEY'), os.getenv('NOPARAM_API_KEY1')]
+    keys = [k for k in keys if k]
+    if not keys:
+        print('No NOPARAM_API_KEY configured: skipping email verification')
+        return (True, 'Email verification skipped (service not configured)', {})
+
+    url = 'https://noparam.com/api/v1/verify'
+    payload = {'email': email}
+
+    last_exception = None
+    for idx, api_key in enumerate(keys, start=1):
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=8)
+            resp.raise_for_status()
+            data = resp.json()
+
+            details = data.get('details', {})
+            score = int(data.get('score', 0) or 0)
+            mailbox_exists = details.get('mailbox_exists') is True
+            mx_records = details.get('mx_records') is True
+
+            if not mx_records:
+                return (False, 'Email domain has no mail servers (MX records). Please provide a valid email address.', data)
+            if not mailbox_exists:
+                return (False, 'Mailbox does not appear to exist. Please provide an email that can receive messages.', data)
+            if score < min_score:
+                return (False, f'Email looks low-quality (score {score}). Please provide a valid email address.', data)
+
+            return (True, 'Valid email', data)
+
+        except requests.RequestException as e:
+            last_exception = e
+            print(f'NoParam API key #{idx} failed: {e}')
+            # try next key, if any
+            continue
+
+    # If we reach here, all keys failed
+    print(f'All NoParam API keys failed. Last error: {last_exception}')
+    return (True, 'Email verification service temporarily unavailable; signup allowed.', {})
+
+
+def is_valid_email_format(email: str) -> bool:
+    """Basic regex check for email format. Not exhaustive, just filters obvious invalid strings."""
+    if not email or len(email) > 254:
+        return False
+    # Simple RFC-like regex (not full RFC5322, but practical)
+    pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+    return re.match(pattern, email) is not None
 
 def send_payment_approved(email, username, month_year, amount):
     subject = f"Payment Approved - {month_year}"
@@ -324,16 +414,18 @@ def send_missed_payment_warning(email, username, missed_months):
     """
     return send_email(subject, [email], html)
 
-def send_monthly_reminder_to_all():
-    """Send monthly payment reminder to all users at start of each month"""
+def send_monthly_reminder_to_all(reminder_type='start'):
+    """Send monthly payment reminder to all users at start/end of month.
+    reminder_type: 'start' or 'end' (affects email wording). Returns number of reminders sent.
+    """
     current_month = get_current_month_year()
-    
+
     # Get all users who have a nation
     all_users = list(users_collection.find(
         {'nation': {'$ne': None}},
         {'_id': 1, 'username': 1, 'email': 1}
     ))
-    
+
     # Get user IDs who have already paid or have pending payment for current month
     paid_user_ids = [
         p['user_id'] for p in monthly_payments_collection.find(
@@ -344,12 +436,107 @@ def send_monthly_reminder_to_all():
             {'user_id': 1}
         )
     ]
-    
+
     # Send reminder to users who haven't paid
-    for user in all_users:
-        user_id_str = str(user['_id'])
-        if user_id_str not in paid_user_ids:
-            send_payment_reminder(user['email'], user['username'], current_month)
+    sent = 0
+    # Batch send: send in chunks to avoid SMTP throttling
+    BATCH_SIZE = 50
+    SLEEP_BETWEEN_BATCHES = 1  # seconds
+    to_send = [u for u in all_users if str(u['_id']) not in paid_user_ids]
+    import time
+    for i in range(0, len(to_send), BATCH_SIZE):
+        batch = to_send[i:i+BATCH_SIZE]
+        for user in batch:
+            try:
+                send_payment_reminder(user['email'], user['username'], current_month, reminder_type=reminder_type)
+                sent += 1
+            except Exception as e:
+                print(f'Failed to send reminder to {user.get("email")}: {e}')
+                continue
+        # brief pause between batches
+        if i + BATCH_SIZE < len(to_send):
+            time.sleep(SLEEP_BETWEEN_BATCHES)
+
+    # Log run
+    try:
+        reminder_runs_collection = db['reminder_runs']
+        reminder_runs_collection.insert_one({
+            'run_at': datetime.now(),
+            'mode': reminder_type,
+            'month': current_month,
+            'sent': sent,
+            'total_candidates': len(to_send)
+        })
+    except Exception as e:
+        print('Failed to write reminder run log:', e)
+
+    return sent
+
+
+@app.route('/admin/run-monthly-reminders', methods=['POST'])
+def admin_run_monthly_reminders():
+    """Admin-only endpoint to trigger monthly reminders on demand (returns JSON report)."""
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'status': 'error', 'message': 'unauthorized'}), 403
+
+    # Accept JSON or form 'mode' parameter: 'start' or 'end'
+    data = request.get_json() or {}
+    mode = data.get('mode') or request.form.get('mode') or 'start'
+    mode = mode if mode in ('start', 'end') else 'start'
+
+    sent = send_monthly_reminder_to_all(reminder_type=mode)
+
+    # Notify admin of reminder summary
+    send_admin_notification('Monthly Reminders Sent', f'Reminders sent to {sent} users for {get_current_month_year()} (mode={mode}).')
+    return jsonify({'status': 'ok', 'reminders_sent': sent, 'mode': mode})
+
+
+@app.route('/admin/reminder-status')
+def admin_reminder_status():
+    """Return last reminder run info for display in admin panel."""
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'status': 'error', 'message': 'unauthorized'}), 403
+    reminder_runs_collection = db['reminder_runs']
+    last = reminder_runs_collection.find().sort('run_at', -1).limit(1)
+    last = list(last)
+    if not last:
+        return jsonify({'status': 'ok', 'last_run': None})
+    lr = last[0]
+    return jsonify({'status': 'ok', 'last_run': {
+        'run_at': lr['run_at'].isoformat(),
+        'mode': lr.get('mode'),
+        'month': lr.get('month'),
+        'sent': lr.get('sent'),
+        'total_candidates': lr.get('total_candidates')
+    }})
+
+
+def _monthly_scheduler_loop():
+    """Background thread that waits until the first of each month and runs reminders."""
+    import time
+    while True:
+        now = datetime.now()
+        # compute next run at 00:10 on first day of next month
+        year = now.year + (1 if now.month == 12 else 0)
+        month = 1 if now.month == 12 else now.month + 1
+        next_run = datetime(year, month, 1, 0, 10, 0)
+        wait_seconds = (next_run - now).total_seconds()
+        if wait_seconds <= 0:
+            # if we missed (rare), run now and loop
+            try:
+                send_monthly_reminder_to_all()
+            except Exception as e:
+                print('Error running monthly reminders:', e)
+            time.sleep(60)
+            continue
+        # sleep until next_run
+        time.sleep(wait_seconds)
+        try:
+            send_monthly_reminder_to_all()
+            print(f'Monthly reminders executed for {get_current_month_year()}')
+        except Exception as e:
+            print('Error running monthly reminders:', e)
+
 
 # Database initialization
 def init_db():
@@ -496,6 +683,15 @@ def signup():
             return render_template('signup.html', error='Password must be at least 8 characters long')
         
         hashed_password = hash_password(password)
+
+        # Basic local email format check to avoid unnecessary API calls
+        if not is_valid_email_format(email):
+            return render_template('signup.html', error='Please enter a valid email address')
+
+        # Verify email using NoParam (require mailbox + MX + score)
+        is_valid_email, msg, details = verify_email_with_noparam(email)
+        if not is_valid_email:
+            return render_template('signup.html', error=msg)
         
         try:
             # Check if username already exists
@@ -775,25 +971,281 @@ def pay_monthly():
         'month_year': selected_month
     })
     
-    if not existing_payment:
-        # Create new payment request
-        monthly_payments_collection.insert_one({
+    if existing_payment:
+        # If payment already exists and is completed, redirect to dashboard
+        if existing_payment.get('status') == 'completed':
+            return redirect(url_for('dashboard'))
+        # If pending, redirect to payment processing
+        return redirect(url_for('payment_processing', month=selected_month))
+    
+    # Redirect to payment processing page with Razorpay
+    return redirect(url_for('payment_processing', month=selected_month))
+
+@app.route('/create-razorpay-order', methods=['POST'])
+def create_razorpay_order():
+    """Create a Razorpay order for ₹50 monthly payment"""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    try:
+        data = request.get_json()
+        selected_month = data.get('month', get_current_month_year())
+        
+        # Check if payment already exists and is completed
+        existing_payment = monthly_payments_collection.find_one({
             'user_id': session['user_id'],
-            'month_year': selected_month,
-            'amount': 50.00,
-            'status': 'pending',
-            'payment_date': datetime.now(),
-            'approved_at': None,
-            'approved_by': None
+            'month_year': selected_month
         })
         
-        # Send notification to admin
-        send_admin_notification(
-            "New Payment Request",
-            f"User <strong>{session['username']}</strong> has submitted a payment request for <strong>{selected_month}</strong> (₹50). Please review in admin panel."
-        )
+        if existing_payment and existing_payment.get('status') == 'completed':
+            return jsonify({'error': 'Payment already completed for this month'}), 400
+        
+        # Create Razorpay order (amount in paise, ₹50 = 5000 paise)
+        amount = 5000  # ₹50 in paise
+        
+        # Create a short receipt ID (max 40 chars for Razorpay)
+        import time
+        receipt_id = f"WC_{session['user_id'][:8]}_{int(time.time())}"
+        
+        order_data = {
+            "amount": amount,
+            "currency": "INR",
+            "receipt": receipt_id,
+            "notes": {
+                "user_id": session['user_id'],
+                "username": session.get('username', ''),
+                "month_year": selected_month,
+                "nation": session.get('nation', '')
+            }
+        }
+        
+        razorpay_order = razorpay_client.order.create(data=order_data)
+        
+        # Store pending payment in database
+        if existing_payment:
+            # Update existing payment with new order_id
+            monthly_payments_collection.update_one(
+                {'_id': existing_payment['_id']},
+                {
+                    '$set': {
+                        'razorpay_order_id': razorpay_order['id'],
+                        'amount': 50.00,
+                        'status': 'pending',
+                        'payment_date': datetime.now()
+                    }
+                }
+            )
+        else:
+            # Create new payment record
+            monthly_payments_collection.insert_one({
+                'user_id': session['user_id'],
+                'month_year': selected_month,
+                'razorpay_order_id': razorpay_order['id'],
+                'amount': 50.00,
+                'status': 'pending',
+                'payment_date': datetime.now(),
+                'approved_at': None,
+                'approved_by': 'razorpay_auto'
+            })
+        
+        return jsonify({
+            'order_id': razorpay_order['id'],
+            'amount': amount,
+            'currency': 'INR',
+            'key_id': RAZORPAY_KEY_ID
+        })
+        
+    except Exception as e:
+        print(f"Error creating Razorpay order: {str(e)}")
+        return jsonify({'error': 'Failed to create payment order'}), 500
+
+@app.route('/verify-razorpay-payment', methods=['POST'])
+def verify_razorpay_payment():
+    """Verify Razorpay payment signature and update database"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
     
-    return redirect(url_for('payment_processing', month=selected_month))
+    try:
+        # Get payment details from form
+        payment_id = request.form.get('razorpay_payment_id')
+        order_id = request.form.get('razorpay_order_id')
+        signature = request.form.get('razorpay_signature')
+        
+        # Verify signature
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': order_id,
+            'razorpay_payment_id': payment_id,
+            'razorpay_signature': signature
+        })
+        
+        # Signature verified successfully - update database
+        payment_record = monthly_payments_collection.find_one({
+            'razorpay_order_id': order_id,
+            'user_id': session['user_id']
+        })
+        
+        if payment_record:
+            # Update payment status to completed
+            monthly_payments_collection.update_one(
+                {'_id': payment_record['_id']},
+                {
+                    '$set': {
+                        'status': 'completed',
+                        'razorpay_payment_id': payment_id,
+                        'razorpay_signature': signature,
+                        'approved_at': datetime.now(),
+                        'approved_by': 'razorpay_auto'
+                    }
+                }
+            )
+            
+            # Update user stats
+            user_stats = user_stats_collection.find_one({'user_id': session['user_id']})
+            if user_stats:
+                new_months_paid = user_stats.get('months_paid', 0) + 1
+                user_stats_collection.update_one(
+                    {'user_id': session['user_id']},
+                    {
+                        '$inc': {
+                                'months_paid': 1,
+                                'total_paid': 50.00
+                        },
+                        '$set': {
+                            'last_payment_month': payment_record['month_year']
+                        }
+                    }
+                )
+                
+                # Check if user qualifies for premium (3+ payments)
+                if new_months_paid >= 3:
+                    users_collection.update_one(
+                        {'_id': ObjectId(session['user_id'])},
+                        {'$set': {'is_premium': True}}
+                    )
+            else:
+                user_stats_collection.insert_one({
+                    'user_id': session['user_id'],
+                    'months_paid': 1,
+                    'total_paid': 50.00,
+                    'last_payment_month': payment_record['month_year']
+                })
+            
+            # Notify admin via email
+            send_admin_notification(
+                "Payment Completed (Razorpay)",
+                f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong> via Razorpay.<br>"
+                f"Amount: ₹50<br>"
+                f"Payment ID: {payment_id}<br>"
+                f"Order ID: {order_id}"
+            )
+            
+            # Render success page directly to avoid intermediate redirect/pain flashes
+            return render_template('payment_success.html')
+        else:
+            return render_template('payment_failed.html')
+            
+    except razorpay.errors.SignatureVerificationError:
+        print("Razorpay signature verification failed")
+        return render_template('payment_failed.html')
+    except Exception as e:
+        print(f"Error verifying payment: {str(e)}")
+        return render_template('payment_failed.html')
+
+
+@app.route('/verify-razorpay-payment-ajax', methods=['POST'])
+def verify_razorpay_payment_ajax():
+    """AJAX-friendly verification endpoint. Returns JSON instead of redirecting.
+    This allows the client to show an immediate overlay and then navigate to success
+    without the intermediate flash.
+    """
+    if 'user_id' not in session:
+        return jsonify({'status': 'error', 'message': 'not_authenticated'}), 401
+
+    data = request.get_json() or {}
+    payment_id = data.get('razorpay_payment_id')
+    order_id = data.get('razorpay_order_id')
+    signature = data.get('razorpay_signature')
+
+    try:
+        # Verify signature
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': order_id,
+            'razorpay_payment_id': payment_id,
+            'razorpay_signature': signature
+        })
+
+        # Signature verified - update DB (same logic as non-AJAX route)
+        payment_record = monthly_payments_collection.find_one({
+            'razorpay_order_id': order_id,
+            'user_id': session['user_id']
+        })
+
+        if payment_record:
+            monthly_payments_collection.update_one(
+                {'_id': payment_record['_id']},
+                {
+                    '$set': {
+                        'status': 'completed',
+                        'razorpay_payment_id': payment_id,
+                        'razorpay_signature': signature,
+                        'approved_at': datetime.now(),
+                        'approved_by': 'razorpay_auto'
+                    }
+                }
+            )
+
+            # Update user stats
+            user_stats = user_stats_collection.find_one({'user_id': session['user_id']})
+            if user_stats:
+                new_months_paid = user_stats.get('months_paid', 0) + 1
+                user_stats_collection.update_one(
+                    {'user_id': session['user_id']},
+                    {
+                        '$inc': {
+                            'months_paid': 1,
+                            'total_paid': 50.00
+                        },
+                        '$set': {
+                            'last_payment_month': payment_record['month_year']
+                        }
+                    }
+                )
+                if new_months_paid >= 3:
+                    users_collection.update_one(
+                        {'_id': ObjectId(session['user_id'])},
+                        {'$set': {'is_premium': True}}
+                    )
+            else:
+                user_stats_collection.insert_one({
+                    'user_id': session['user_id'],
+                    'months_paid': 1,
+                    'total_paid': 50.00,
+                    'last_payment_month': payment_record['month_year']
+                })
+
+            # Notify admin
+            send_admin_notification(
+                "Payment Completed (Razorpay)",
+                f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong> via Razorpay.<br>Amount: ₹50<br>Payment ID: {payment_id}<br>Order ID: {order_id}"
+            )
+
+            return jsonify({'status': 'ok'})
+        else:
+            return jsonify({'status': 'error', 'message': 'payment_record_not_found'}), 400
+
+    except razorpay.errors.SignatureVerificationError:
+        print('Razorpay signature verification failed (ajax)')
+        return jsonify({'status': 'error', 'message': 'signature_verification_failed'}), 400
+    except Exception as e:
+        print(f'Error verifying payment (ajax): {e}')
+        return jsonify({'status': 'error', 'message': 'server_error'}), 500
+
+@app.route('/payment-failed')
+def payment_failed():
+    """Page shown when payment fails or is cancelled"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('payment_failed.html')
 
 @app.route('/payment-processing')
 def payment_processing():
@@ -970,33 +1422,30 @@ def admin_panel():
     if 'user_id' not in session or not session.get('is_admin'):
         return redirect(url_for('login'))
     
-    # Get pending payments with user info
-    pipeline = [
-        {'$match': {'status': 'pending'}},
-        {'$sort': {'payment_date': -1}}
-    ]
-    pending_payments_data = []
-    for payment in monthly_payments_collection.find({'status': 'pending'}).sort('payment_date', -1):
+    # Get recent completed payments (instead of pending, since Razorpay auto-approves)
+    completed_payments_data = []
+    for payment in monthly_payments_collection.find({'status': 'completed'}).sort('approved_at', -1).limit(50):
         user = users_collection.find_one({'_id': ObjectId(payment['user_id'])})
         if user:
-            # Format payment_date
-            payment_date = payment['payment_date']
-            if isinstance(payment_date, datetime):
-                payment_date_str = payment_date.strftime('%Y-%m-%d %H:%M:%S')
+            # Format approved_at
+            approved_at = payment.get('approved_at')
+            if isinstance(approved_at, datetime):
+                approved_at_str = approved_at.strftime('%Y-%m-%d %H:%M:%S')
             else:
-                payment_date_str = str(payment_date) if payment_date else None
+                approved_at_str = str(approved_at) if approved_at else None
             
-            pending_payments_data.append((
+            completed_payments_data.append((
                 str(payment['_id']),
                 payment['user_id'],
                 user['username'],
                 user.get('nation'),
                 payment['month_year'],
                 payment['amount'],
-                payment_date_str
+                approved_at_str,
+                payment.get('razorpay_payment_id', 'N/A')
             ))
     
-    # Get pending reward claims
+    # Get pending reward claims (these still need manual approval for payout)
     pending_rewards_data = []
     for claim in winner_claims_collection.find({'status': 'pending'}).sort('claimed_at', -1):
         user = users_collection.find_one({'_id': ObjectId(claim['user_id'])})
@@ -1019,15 +1468,30 @@ def admin_panel():
     # Get all users with their stats
     users_data = []
     for user in users_collection.find({'nation': {'$ne': None}}):
-        stats = user_stats_collection.find_one({'user_id': str(user['_id'])})
+        uid_str = str(user['_id'])
+        stats = user_stats_collection.find_one({'user_id': uid_str})
+
+        # Fallback: if stats.total_paid is missing or zero, compute total from completed payments
+        payments_pipeline = [
+            {'$match': {'user_id': uid_str, 'status': 'completed'}},
+            {'$group': {'_id': None, 'total': {'$sum': '$amount'}, 'months': {'$sum': 1}}}
+        ]
+        payments_res = list(monthly_payments_collection.aggregate(payments_pipeline))
+        payments_total = float(payments_res[0]['total']) if payments_res and payments_res[0].get('total') is not None else 0.00
+        payments_months = int(payments_res[0]['months']) if payments_res and payments_res[0].get('months') is not None else 0
+
+        months_paid = stats.get('months_paid', 0) if stats else payments_months
+        total_paid = float(stats.get('total_paid', 0.00)) if stats and stats.get('total_paid', 0.00) else payments_total
+        last_payment_month = stats.get('last_payment_month') if stats else None
+
         users_data.append((
-            str(user['_id']),
+            uid_str,
             user['username'],
             user.get('nation'),
             user.get('is_premium', False),
-            stats.get('months_paid', 0) if stats else 0,
-            stats.get('total_paid', 0.00) if stats else 0.00,
-            stats.get('last_payment_month') if stats else None
+            months_paid,
+            total_paid,
+            last_payment_month
         ))
     
     # Get nations for winner selection
@@ -1039,6 +1503,7 @@ def admin_panel():
     pending_payments_count = monthly_payments_collection.count_documents({'status': 'pending'})
     
     pipeline = [
+        {'$match': {'status': 'completed'}},
         {'$group': {'_id': None, 'total': {'$sum': '$amount'}}}
     ]
     result = list(monthly_payments_collection.aggregate(pipeline))
@@ -1047,13 +1512,16 @@ def admin_panel():
     payment_stats = (total_payments, total_amount, completed_payments, pending_payments_count)
     
     return render_template('admin_panel.html', 
-                         pending_payments=pending_payments_data,
+                         completed_payments=completed_payments_data,
                          pending_rewards=pending_rewards_data,
                          users=users_data,
                          nations=nations_data,
                          payment_stats=payment_stats,
                          winning_nation=get_winning_nation())
 
+# NOTE: These routes are deprecated - Razorpay now handles payment approval automatically
+# Keeping for reference but not used in automated system
+"""
 @app.route('/admin/approve-payment', methods=['POST'])
 def approve_payment():
     if 'user_id' not in session or not session.get('is_admin'):
@@ -1143,6 +1611,8 @@ def reject_payment():
             send_payment_rejected(email, username, month_year)
     
     return jsonify({'success': True, 'message': 'Payment rejected'})
+"""
+
 
 @app.route('/admin/set-winner', methods=['POST'])
 def set_winner():
@@ -1225,6 +1695,56 @@ def logout():
     session.clear()
     return redirect(url_for('index'))
 
+# Optimized static file serving with proper caching
+@app.route('/static/<path:filename>')
+def custom_static(filename):
+    """Serve static files with proper cache headers for production"""
+    response = send_from_directory('static', filename)
+    
+    # Set cache headers based on file type
+    if filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico')):
+        # Images: cache for 1 year
+        response.cache_control.max_age = 31536000
+        response.cache_control.public = True
+    elif filename.endswith(('.mp4', '.webm', '.ogg')):
+        # Videos: cache for 1 week, use partial content
+        response.cache_control.max_age = 604800
+        response.cache_control.public = True
+        response.headers['Accept-Ranges'] = 'bytes'
+    elif filename.endswith(('.css', '.js')):
+        # CSS/JS: cache for 1 day (in case of updates)
+        response.cache_control.max_age = 86400
+        response.cache_control.public = True
+    else:
+        # Other files: cache for 1 hour
+        response.cache_control.max_age = 3600
+        response.cache_control.public = True
+    
+    return response
+
+# Add after_request handler for additional headers
+@app.after_request
+def add_security_headers(response):
+    """Add security and performance headers to all responses"""
+    # Only add caching for static files
+    if request.path.startswith('/static/'):
+        response.headers['Vary'] = 'Accept-Encoding'
+        
+    # Security headers for all responses
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    
+    return response
+
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    # Start monthly reminder scheduler thread
+    try:
+        import threading
+        t = threading.Thread(target=_monthly_scheduler_loop, daemon=True)
+        t.start()
+    except Exception as e:
+        print('Could not start monthly scheduler thread:', e)
+
+    app.run(host='0.0.0.0', port=8000, debug=True)

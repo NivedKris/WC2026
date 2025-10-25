@@ -6,9 +6,14 @@
 <!-- Video Background Container -->
 <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-hidden">
     <!-- Video Background -->
-    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0">
-        <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
-    </video>
+    <!-- <video autoplay loop muted playsinline preload="auto" class="fixed top-0 left-0 w-full h-full object-cover z-0">
+  <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
+</video> -->
+<video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0">
+  <source src="https://cdn.jsdelivr.net/gh/NivedKris/cdn@main/background.mp4" type="video/mp4">
+</video>
+
+
     
     <!-- Dark Overlay for better text readability -->
     <div class="fixed top-0 left-0 w-full h-full bg-black/60 z-10"></div>
@@ -29,7 +34,7 @@
         <div class="w-full max-w-md text-center py-8">
             <h1 class="text-white tracking-light text-[42px] font-black leading-tight px-4 text-center pb-2">WC 2026</h1>
             <p class="text-yellow-400 text-lg font-bold leading-normal pb-3 pt-1 px-4 text-center italic">May Your Nation Lead You to Glory</p>
-            <p class="text-white text-base font-normal leading-normal px-4 text-center opacity-80">Support Your Team, Win Big!</p>
+            <p class="text-white text-base font-normal leading-normal px-4 text-center opacity-80">Support Your Team for WC2026!</p>
         </div>
         <div class="w-full max-w-md px-4 pb-8">
             <div class="flex flex-col gap-3">

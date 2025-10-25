@@ -5,7 +5,8 @@
 {% block content %}
 <div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
     <!-- Video Background -->
-    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+    <video autoplay loop muted playsinline preload="none" class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+        <source src="https://cdn.jsdelivr.net/gh/NivedKris/cdn@main/background.mp4" type="video/mp4">
         <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
     </video>
     

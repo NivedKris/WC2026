@@ -5,7 +5,8 @@
 {% block content %}
 <div class="relative flex h-auto min-h-screen w-full flex-col bg-background-light dark:bg-background-dark group/design-root overflow-x-hidden">
     <!-- Video Background -->
-    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+    <video autoplay loop muted playsinline preload="none" class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+        <source src="https://cdn.jsdelivr.net/gh/NivedKris/cdn@main/background.mp4" type="video/mp4">
         <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
     </video>
     
@@ -41,7 +42,7 @@
             
             <h2 class="text-white text-2xl font-bold text-center mb-2">Login to Your Account</h2>
             
-            <form method="POST" class="flex flex-col gap-6">
+            <form method="POST" class="flex flex-col gap-6" onsubmit="handleLogin(event)">
                 <div class="flex flex-col min-w-40 flex-1">
                     <p class="text-blue-200 text-base font-medium leading-normal pb-2">Username</p>
                     <input name="username" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-white focus:outline-0 focus:ring-0 border-blue-400/30 bg-slate-700/50 backdrop-blur-sm focus:border-blue-400 h-14 placeholder:text-slate-400 p-4 text-base font-normal leading-normal" placeholder="Enter your username" required>
@@ -69,4 +70,13 @@
     </div>
     </div> <!-- Close content layer -->
 </div>
+
+<script>
+function handleLogin(event) {
+    const btn = document.getElementById('loginBtn');
+    setButtonLoading(btn);
+    // Show dashboard loading overlay when form submits
+    setTimeout(showDashboardLoading, 200);
+}
+</script>
 {% endblock %}

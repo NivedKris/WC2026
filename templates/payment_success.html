@@ -5,7 +5,8 @@
 {% block content %}
 <div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
     <!-- Video Background -->
-    <video autoplay loop muted playsinline class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+    <video autoplay loop muted playsinline preload="none" class="fixed top-0 left-0 w-full h-full object-cover z-0 opacity-15">
+        <source src="https://cdn.jsdelivr.net/gh/NivedKris/cdn@main/background.mp4" type="video/mp4">
         <source src="{{ url_for('static', filename='video/background.mp4') }}" type="video/mp4">
     </video>
     
@@ -13,36 +14,113 @@
     <div class="relative z-10">
     <div class="flex items-center bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between">
         <div class="size-12 shrink-0"></div>
-        <h2 class="text-slate-800 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Success</h2>
+        <h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Payment Verified</h2>
         <div class="size-12 shrink-0"></div>
     </div>
 
-    <div class="flex flex-col items-center justify-center flex-1 px-4 py-8 text-center">
+    <!-- Verification Animation (shows first) -->
+    <div id="verificationAnimation" class="flex flex-col items-center justify-center flex-1 px-4 py-8 text-center">
+        <div class="relative mb-8 flex h-40 w-40 items-center justify-center">
+            <div class="absolute inset-0 animate-spin rounded-full border-4 border-green-500/30 border-t-green-500"></div>
+            <span class="material-symbols-outlined text-6xl text-green-500 animate-pulse">verified</span>
+        </div>
+        
+        <h1 class="text-white tracking-light text-[28px] font-bold leading-tight pb-3">Verifying Payment...</h1>
+        
+        <p class="text-blue-200 text-base font-normal leading-normal max-w-md">
+            Please wait while we confirm your payment with Razorpay.
+        </p>
+
+        <div class="mt-6 flex items-center gap-2">
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+        </div>
+    </div>
+
+    <!-- Success Message (shows after 2 seconds) -->
+    <div id="successMessage" class="hidden flex-col items-center justify-center flex-1 px-4 py-8 text-center">
         <div class="mb-8 flex h-40 w-40 items-center justify-center">
-            <div class="bg-green-100 dark:bg-green-900/20 rounded-full p-6">
-                <span class="material-symbols-outlined text-6xl text-green-500">check_circle</span>
+            <div class="bg-green-500/20 backdrop-blur-sm rounded-full p-6 animate-pulse">
+                <span class="material-symbols-outlined text-6xl text-green-400">check_circle</span>
             </div>
         </div>
         
-        <h1 class="text-slate-800 dark:text-white tracking-light text-[32px] font-bold leading-tight pb-3 pt-6">Payment Successful!</h1>
+        <h1 class="text-white tracking-light text-[32px] font-bold leading-tight pb-3 pt-6">Payment Successful!</h1>
         
-        <p class="text-slate-600 dark:text-slate-400 text-base font-normal leading-normal pb-3 pt-1 max-w-md">
-            Welcome to World Cup Premium! You now have access to all exclusive features and benefits.
+        <p class="text-blue-200 text-base font-normal leading-normal pb-3 pt-1 max-w-md">
+            Your payment has been confirmed. Thank you for supporting your nation!
         </p>
 
-        <div class="mt-8 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 max-w-md">
-            <p class="text-green-800 dark:text-green-300 text-sm">
-                <span class="material-symbols-outlined align-middle text-base">verified</span>
-                Your Premium status has been activated successfully.
+        <div class="mt-8 bg-green-500/20 backdrop-blur-sm border border-green-400/30 rounded-xl p-4 max-w-md">
+            <p class="text-green-200 text-sm flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-base">verified</span>
+                Payment verified and recorded successfully
             </p>
         </div>
 
         <div class="mt-8 w-full max-w-sm">
-            <a href="{{ url_for('dashboard') }}" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 flex-1 bg-primary text-white text-base font-bold leading-normal tracking-[0.015em] no-underline">
-                <span class="truncate">Return to Dashboard</span>
-            </a>
+            <button onclick="redirectToDashboard()" class="flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl h-12 px-5 bg-primary hover:bg-primary/90 text-white text-base font-bold leading-normal tracking-[0.015em]">
+                <span class="material-symbols-outlined">dashboard</span>
+                <span id="redirectText">Return to Dashboard</span>
+            </button>
         </div>
     </div>
     </div> <!-- Close content layer -->
 </div>
+
+<script>
+// Clear razorpay flag, remove any early overlay and restore page paint
+try { sessionStorage.removeItem('razorpay_checkout_opened'); } catch (e) {}
+try {
+    var early = document.getElementById('paymentProcessingOverlay');
+    if (early) {
+        try { early.classList.remove('rp-visible'); } catch(e) {}
+        setTimeout(function(){ try{ early.parentNode && early.parentNode.removeChild(early); }catch(e){} }, 260);
+    }
+    document.documentElement.classList.remove('rp-hide');
+} catch(e) {}
+
+setTimeout(function() {
+    document.getElementById('verificationAnimation').classList.add('hidden');
+    document.getElementById('successMessage').classList.remove('hidden');
+    document.getElementById('successMessage').classList.add('flex');
+    
+    // Auto redirect after 2 more seconds
+    setTimeout(function() {
+        redirectToDashboard();
+    }, 2000);
+}, 2000);
+
+function redirectToDashboard() {
+    const btn = event?.target;
+    const redirectText = document.getElementById('redirectText');
+    if (redirectText) {
+        redirectText.textContent = 'Loading Dashboard...';
+    }
+    showLoadingOverlay();
+    window.location.href = "{{ url_for('dashboard') }}";
+}
+
+function showLoadingOverlay() {
+    const overlay = document.createElement('div');
+    overlay.id = 'loadingOverlay';
+    overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center';
+    overlay.innerHTML = `
+        <div class="text-center">
+            <div class="relative mb-6 flex h-32 w-32 items-center justify-center mx-auto">
+                <div class="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+                <span class="material-symbols-outlined text-5xl text-primary animate-pulse">sports_soccer</span>
+            </div>
+            <p class="text-white text-xl font-bold">Loading Dashboard...</p>
+            <div class="mt-4 flex items-center justify-center gap-2">
+                <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+}
+</script>
 {% endblock %}
