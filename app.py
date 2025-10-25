@@ -56,6 +56,10 @@ oauth.register(
     client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
     # Use OpenID Connect discovery so Authlib can find jwks_uri and endpoints
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    # Register a default redirect_uri here (picked from env). Authlib will
+    # include this value when building the authorization request if
+    # authorize_redirect() is called without an explicit redirect_uri.
+    redirect_uri=(DEV_REDIRECT_URL if ISDEV else PROD_REDIRECT_URL),
     client_kwargs={'scope': 'openid email profile'},
 )
 
@@ -727,9 +731,10 @@ def login_google():
     nonce = secrets.token_urlsafe(16)
     session['oauth_nonce'] = nonce
 
-    # Also generate and store an explicit state value so we can compare later
-    state = secrets.token_urlsafe(16)
-    session['oauth_state'] = state
+    # We rely on Authlib to generate and manage the OAuth2 state value.
+    # Generating a separate application-level `oauth_state` can conflict
+    # with Authlib's internal state handling and cause mismatches.
+    state = None
 
     # Determine redirect URI based on environment flag
     # If DEV_REDIRECT_URL/PROD_REDIRECT_URL were explicitly set in ENV, use them.
@@ -750,14 +755,24 @@ def login_google():
 
     # Debug info to help diagnose state mismatches locally
     try:
-        print(f"login_google: redirect_uri={redirect_uri} state={state} nonce={nonce} session_keys={list(session.keys())}")
+        # Print Authlib's internal state keys (they look like `_state_google_<rand>`)
+        internal_state_keys = [k for k in session.keys() if k.startswith('_state_')]
+        print(f"login_google: redirect_uri={redirect_uri} nonce={nonce} internal_state_keys={internal_state_keys} session_keys={list(session.keys())}")
     except Exception:
         pass
 
     # Pass the nonce and the explicit state to the authorize call so Google will
-    # include them in the response. The redirect_uri must match an authorized
-    # redirect URI in your Google Cloud Console.
-    return oauth.google.authorize_redirect(redirect_uri, nonce=nonce, state=state)
+    # include them in the response. We intentionally do NOT pass redirect_uri
+    # here so Authlib will use the redirect_uri registered above. That keeps
+    # the authorization request consistent with the Google Cloud Console
+    # client configuration and avoids accidental mismatches caused by
+    # differing request hosts.
+    try:
+        return oauth.google.authorize_redirect(nonce=nonce, state=state)
+    except TypeError:
+        # Older versions of Authlib expected redirect_uri first; fall back to
+        # positional call for maximum compatibility.
+        return oauth.google.authorize_redirect(nonce, state)
 
 
 @app.route('/callback')
@@ -768,7 +783,8 @@ def auth_callback():
     # Debug incoming state vs stored state to diagnose CSRF mismatches
     try:
         incoming_state = request.args.get('state')
-        print(f"auth_callback: incoming_state={incoming_state} session_oauth_state={session.get('oauth_state')} session_keys={list(session.keys())}")
+        internal_state_keys = [k for k in session.keys() if k.startswith('_state_')]
+        print(f"auth_callback: incoming_state={incoming_state} internal_state_keys={internal_state_keys} session_keys={list(session.keys())}")
     except Exception:
         pass
 
