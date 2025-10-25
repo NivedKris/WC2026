@@ -63,13 +63,39 @@ def hash_password(password):
 
 # Email sending functions
 def send_email(subject, recipients, html_body):
+    import traceback
     try:
-        msg = Message(subject, recipients=recipients)
-        msg.html = html_body
-        mail.send(msg)
+        # Normalize recipients: allow a single string or iterable; filter out falsy values
+        if recipients is None:
+            print('send_email called with recipients=None')
+            return False
+
+        # If a single string (one email) was passed, wrap in list
+        if isinstance(recipients, str):
+            recip_list = [recipients]
+        else:
+            try:
+                recip_list = list(recipients)
+            except Exception:
+                # Not iterable
+                print('send_email: recipients is not iterable:', type(recipients))
+                return False
+
+        # Filter out invalid entries
+        recip_list = [r for r in recip_list if r]
+        if not recip_list:
+            print('send_email: no valid recipient addresses after filtering')
+            return False
+
+        # Ensure Message creation and sending happen inside an application context
+        with app.app_context():
+            msg = Message(subject, recipients=recip_list)
+            msg.html = html_body
+            mail.send(msg)
         return True
     except Exception as e:
-        print(f"Error sending email: {e}")
+        print('Error sending email:', e)
+        print(traceback.format_exc())
         return False
 
 def send_signup_email(email, username):
@@ -210,6 +236,23 @@ def send_payment_approved(email, username, month_year, amount):
     """
     return send_email(subject, [email], html)
 
+
+def _safe_send_payment_approved(email, username, month_year, amount=50.00):
+    """Helper wrapper to call send_payment_approved from background threads with robust logging."""
+    import traceback
+    try:
+        print(f"_safe_send_payment_approved: preparing to send to={email} user={username} month={month_year}")
+        if not email:
+            print("_safe_send_payment_approved: no email address provided, aborting send")
+            return False
+        result = send_payment_approved(email, username, month_year, amount)
+        print(f"_safe_send_payment_approved: send result={result}")
+        return result
+    except Exception as e:
+        print("_safe_send_payment_approved: exception while sending:", e)
+        print(traceback.format_exc())
+        return False
+
 def send_payment_rejected(email, username, month_year):
     subject = f"Payment Issue - {month_year}"
     html = f"""
@@ -263,7 +306,25 @@ def send_admin_notification(subject, body):
         </body>
     </html>
     """
-    return send_email(subject, [admin_email], html)
+
+    # Helper that sends synchronously and returns success boolean
+    def _send_sync():
+        try:
+            return send_email(subject, [admin_email], html)
+        except Exception as e:
+            print('Error sending admin notification:', e)
+            return False
+
+    # Attempt to send in a background thread by default to avoid blocking web requests
+    try:
+        import threading
+        t = threading.Thread(target=_send_sync, daemon=True)
+        t.start()
+        return True
+    except Exception as e:
+        # Fallback to synchronous send if threads can't be started
+        print('Could not start admin notify thread, sending synchronously:', e)
+        return _send_sync()
 
 def send_winner_announcement_to_winners(winning_nation):
     """Send email to all users who supported the winning nation"""
@@ -1130,14 +1191,34 @@ def verify_razorpay_payment():
                     'last_payment_month': payment_record['month_year']
                 })
             
-            # Notify admin via email
-            send_admin_notification(
-                "Payment Completed (Razorpay)",
-                f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong> via Razorpay.<br>"
-                f"Amount: ₹50<br>"
-                f"Payment ID: {payment_id}<br>"
-                f"Order ID: {order_id}"
-            )
+            # Notify admin (non-blocking by default)
+            try:
+                send_admin_notification(
+                    "Payment Completed (Razorpay)",
+                    f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong> via Razorpay.<br>"
+                    f"Amount: ₹50<br>"
+                    f"Payment ID: {payment_id}<br>"
+                    f"Order ID: {order_id}"
+                )
+            except Exception as e:
+                print('Admin notify failed:', e)
+
+            # Send confirmation email to the user (non-blocking)
+            try:
+                # Capture request/session-scoped values here so the background thread
+                # does NOT try to access Flask's `session` or request context.
+                user_email = payment_record.get('email') or session.get('email')
+                username = session.get('username')
+                month_year = payment_record['month_year']
+
+                import threading
+                threading.Thread(target=lambda e=user_email, u=username, m=month_year: send_payment_approved(e, u, m, 50.00), daemon=True).start()
+            except Exception:
+                # Fallback synchronous send (safe because values already captured)
+                try:
+                    send_payment_approved(payment_record.get('email') or session.get('email'), session.get('username'), payment_record['month_year'], 50.00)
+                except Exception as e:
+                    print('User payment confirmation email failed:', e)
             
             # Render success page directly to avoid intermediate redirect/pain flashes
             return render_template('payment_success.html')
@@ -1223,11 +1304,29 @@ def verify_razorpay_payment_ajax():
                     'last_payment_month': payment_record['month_year']
                 })
 
-            # Notify admin
-            send_admin_notification(
-                "Payment Completed (Razorpay)",
-                f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong> via Razorpay.<br>Amount: ₹50<br>Payment ID: {payment_id}<br>Order ID: {order_id}"
-            )
+            # Notify admin (send_admin_notification is non-blocking)
+            try:
+                send_admin_notification(
+                    "Payment Completed (Razorpay)",
+                    f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong> via Razorpay.<br>Amount: ₹50<br>Payment ID: {payment_id}<br>Order ID: {order_id}"
+                )
+            except Exception as e:
+                print('Admin notify failed (ajax):', e)
+
+            # Send confirmation email to the user (non-blocking)
+            try:
+                # Capture values before starting the thread
+                user_email = payment_record.get('email') or session.get('email')
+                username = session.get('username')
+                month_year = payment_record['month_year']
+
+                import threading
+                threading.Thread(target=lambda e=user_email, u=username, m=month_year: send_payment_approved(e, u, m, 50.00), daemon=True).start()
+            except Exception:
+                try:
+                    send_payment_approved(payment_record.get('email') or session.get('email'), session.get('username'), payment_record['month_year'], 50.00)
+                except Exception as e:
+                    print('User payment confirmation email failed (ajax):', e)
 
             return jsonify({'status': 'ok'})
         else:
