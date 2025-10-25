@@ -11,6 +11,7 @@ import razorpay
 from flask_compress import Compress
 import requests
 import re
+from authlib.integrations.flask_client import OAuth
 
 load_dotenv()
 app = Flask(__name__, static_folder="static", static_url_path="/static")
@@ -23,6 +24,17 @@ def add_header(response):
 
 
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')
+
+# OAuth (Google) configuration
+oauth = OAuth(app)
+oauth.register(
+    name='google',
+    client_id=os.getenv('GOOGLE_CLIENT_ID'),
+    client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
+    # Use OpenID Connect discovery so Authlib can find jwks_uri and endpoints
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
 
 # Flask optimizations for production
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # Cache static files for 1 year (in seconds)
@@ -174,69 +186,11 @@ def verify_email_with_noparam(email: str, min_score: int = None):
         except Exception:
             min_score = 80
 
-    keys = [os.getenv('NOPARAM_API_KEY'), os.getenv('NOPARAM_API_KEY1')]
-    keys = [k for k in keys if k]
-    if not keys:
-        print('No NOPARAM_API_KEY configured: skipping email verification')
-        return (True, 'Email verification skipped (service not configured)', {})
-
-    url = 'https://noparam.com/api/v1/verify'
-    payload = {'email': email}
-
-    last_exception = None
-    for idx, api_key in enumerate(keys, start=1):
-        headers = {
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json'
-        }
-        try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=8)
-            resp.raise_for_status()
-            data = resp.json()
-
-            details = data.get('details', {})
-            # Normalize score defensively
-            try:
-                score = int(data.get('score', 0) or 0)
-            except Exception:
-                score = 0
-
-            # Explicit checks required by policy: MX and mailbox existence
-            mx_records = details.get('mx_records') is True
-            mailbox_exists = details.get('mailbox_exists') is True
-
-            if not mx_records:
-                return (
-                    False,
-                    'Email domain has no mail servers (MX records). Please provide a valid email address.',
-                    data,
-                )
-
-            if not mailbox_exists:
-                return (
-                    False,
-                    'Mailbox does not appear to exist. Please provide an email that can receive messages.',
-                    data,
-                )
-
-            if score < min_score:
-                return (
-                    False,
-                    f'Email looks low-quality (score {score}). Please provide a valid email address.',
-                    data,
-                )
-
-            return (True, 'Valid email', data)
-
-        except requests.RequestException as e:
-            last_exception = e
-            print(f'NoParam API key #{idx} failed: {e}')
-            # try next key, if any
-            continue
-
-    # If we reach here, all keys failed
-    print(f'All NoParam API keys failed. Last error: {last_exception}')
-    return (True, 'Email verification service temporarily unavailable; signup allowed.', {})
+    # NoParam email verification removed. We keep a lightweight local format check
+    # and allow signup to proceed. If you want to re-enable a third-party
+    # verification service later, implement it here and return the same tuple
+    # signature (is_valid: bool, message: str, details: dict).
+    return (True, 'Email verification disabled (use Google OAuth for signup)', {})
 
 
 def is_valid_email_format(email: str) -> bool:
@@ -733,107 +687,167 @@ def get_winning_nation():
 def index():
     return render_template('index.html')
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login')
 def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        hashed_password = hash_password(password)
-        
-        user = users_collection.find_one({'username': username, 'password': hashed_password})
-        
-        if user:
-            session['user_id'] = str(user['_id'])
-            session['username'] = user['username']
-            session['avatar_url'] = user.get('avatar_url', 'default_avatar.png')
-            session['theme_color'] = user.get('theme_color', '#1173d4')
-            session['is_premium'] = bool(user.get('is_premium', False))
-            session['is_admin'] = bool(user.get('is_admin', False))
-            session['nation'] = user.get('nation')
-            
-            if session['is_admin']:
-                return redirect(url_for('admin_panel'))
-            return redirect(url_for('dashboard'))
-        
-        return render_template('login.html', error='Invalid credentials')
-    
+    """Render the login page. Manual username/password login is disabled; users should
+    sign in with Google via the provided button. The Google OAuth flow is started at
+    `/login/google`.
+    """
     return render_template('login.html')
 
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        email = request.form.get('email')
-        terms_accepted = request.form.get('terms_accepted')
-        
-        if not terms_accepted:
-            return render_template('signup.html', error='You must accept the terms and conditions')
-        
-        # Validate password strength
-        if len(password) < 8:
-            return render_template('signup.html', error='Password must be at least 8 characters long')
-        
-        hashed_password = hash_password(password)
 
-        # Basic local email format check to avoid unnecessary API calls
-        if not is_valid_email_format(email):
-            return render_template('signup.html', error='Please enter a valid email address')
+@app.route('/login/google')
+def login_google():
+    """Redirect to Google's OAuth 2.0 authorization endpoint."""
+    # Generate a nonce for OIDC ID token validation and store in session
+    import secrets
+    nonce = secrets.token_urlsafe(16)
+    session['oauth_nonce'] = nonce
 
-        # Verify email using NoParam (require mailbox + MX + score)
-        is_valid_email, msg, details = verify_email_with_noparam(email)
-        if not is_valid_email:
-            return render_template('signup.html', error=msg)
-        
+    redirect_uri = url_for('auth_callback', _external=True)
+    # Pass the nonce to the authorize call so Google will include it in the ID token
+    return oauth.google.authorize_redirect(redirect_uri, nonce=nonce)
+
+
+@app.route('/callback')
+def auth_callback():
+    """Handle the OAuth2 callback from Google, create or lookup the user,
+    and establish a session.
+    """
+    try:
+        token = oauth.google.authorize_access_token()
+    except Exception as e:
+        print('Google authorize_access_token failed:', e)
+        return render_template('login.html', error='Google sign-in failed')
+
+    # Try to fetch userinfo via the userinfo endpoint
+    # Prefer parsing the ID token (OpenID Connect). This avoids relying on
+    # the client.get() helper which can fail if api_base_url is not set.
+    userinfo = {}
+    try:
+        # authorize_access_token returns a token dict that includes 'id_token'
+        # when using OpenID Connect. parse_id_token will validate and decode it.
+        nonce = session.pop('oauth_nonce', None)
+        userinfo = oauth.google.parse_id_token(token, nonce=nonce)
+    except Exception as id_err:
+        print('ID token parse failed, falling back to userinfo endpoint:', id_err)
         try:
-            # Check if username already exists
-            if users_collection.find_one({'username': username}):
-                return render_template('signup.html', error='Username already exists')
-            
-            # Insert new user
-            user_result = users_collection.insert_one({
+            # Fallback: fetch userinfo endpoint from provider metadata
+            metadata = oauth.google.load_server_metadata()
+            userinfo_endpoint = metadata.get('userinfo_endpoint')
+            if userinfo_endpoint:
+                # Use the access token when calling the userinfo endpoint
+                resp = oauth.google.get(userinfo_endpoint, token=token)
+                userinfo = resp.json()
+            else:
+                print('No userinfo_endpoint found in provider metadata')
+        except Exception as e:
+            print('Failed fetching userinfo fallback:', e)
+            userinfo = {}
+
+    email = userinfo.get('email')
+    if not email:
+        return render_template('login.html', error='Google did not return an email address')
+
+    # Find existing user by email
+    user = users_collection.find_one({'email': email})
+
+    if not user:
+        # Create a new user record using Google profile info
+        base_username = (userinfo.get('name') or email.split('@')[0]).strip().replace(' ', '_')
+        if not base_username:
+            base_username = email.split('@')[0]
+
+        username = base_username
+        i = 1
+        while users_collection.find_one({'username': username}):
+            username = f"{base_username}{i}"
+            i += 1
+
+        avatar = userinfo.get('picture') or 'default_avatar.png'
+        try:
+            r = users_collection.insert_one({
                 'username': username,
-                'password': hashed_password,
+                'password': hash_password(os.urandom(24).hex()),  # placeholder random password
                 'email': email,
                 'nation': None,
-                'avatar_url': 'default_avatar.png',
+                'avatar_url': avatar,
                 'theme_color': '#1173d4',
                 'is_premium': False,
                 'is_admin': False,
                 'created_at': datetime.now()
             })
-            user_id = str(user_result.inserted_id)
-            
-            # Insert user stats
+            user_id = str(r.inserted_id)
             user_stats_collection.insert_one({
                 'user_id': user_id,
                 'months_paid': 0,
                 'total_paid': 0.00,
                 'last_payment_month': None
             })
-            
-            session['user_id'] = user_id
-            session['username'] = username
-            session['avatar_url'] = 'default_avatar.png'
-            session['theme_color'] = '#1173d4'
-            session['is_premium'] = False
-            session['is_admin'] = False
-            session['nation'] = None
-            
-            # Send welcome email
-            send_signup_email(email, username)
-            
-            return redirect(url_for('select_nation'))
-        
+            # notify admin about new registration (non-blocking)
+            try:
+                admin_subject = f"New user registered: {username}"
+                admin_body = f"A new user has registered via Google OAuth:<br><br><strong>Username:</strong> {username}<br><strong>Email:</strong> {email}<br><strong>Time:</strong> {datetime.now().isoformat()}"
+                # send_admin_notification already starts a background thread by default
+                send_admin_notification(admin_subject, admin_body)
+            except Exception as e:
+                print('Failed to send admin notification for new user:', e)
+
+            # send welcome email (non-blocking)
+            try:
+                import threading
+                threading.Thread(target=lambda e=email, u=username: send_signup_email(e, u), daemon=True).start()
+            except Exception:
+                try:
+                    send_signup_email(email, username)
+                except Exception as e:
+                    print('Welcome email failed:', e)
+
+            user = users_collection.find_one({'_id': r.inserted_id})
         except Exception as e:
-            return render_template('signup.html', error='An error occurred during signup')
-    
+            print('Error creating user from Google profile:', e)
+            return render_template('login.html', error='Failed to create user account')
+    # If the logged in Google email matches ADMIN_EMAIL, grant admin rights
+    admin_email = os.getenv('ADMIN_EMAIL')
+    try:
+        if admin_email and email.lower() == admin_email.lower():
+            # Ensure user document has is_admin True
+            users_collection.update_one({'email': email}, {'$set': {'is_admin': True}})
+            # Refresh user object
+            user = users_collection.find_one({'email': email})
+    except Exception as e:
+        print('Error setting admin flag for user:', e)
+
+    # Establish session
+    session['user_id'] = str(user['_id'])
+    session['username'] = user['username']
+    session['avatar_url'] = user.get('avatar_url', 'default_avatar.png')
+    session['theme_color'] = user.get('theme_color', '#1173d4')
+    session['is_premium'] = bool(user.get('is_premium', False))
+    session['is_admin'] = bool(user.get('is_admin', False))
+    session['nation'] = user.get('nation')
+
+    # If the user is an admin, send them to the admin panel regardless of nation
+    if session.get('is_admin'):
+        return redirect(url_for('admin_panel'))
+
+    # Redirect new users to nation selection, existing users to dashboard
+    if not session.get('nation'):
+        return redirect(url_for('select_nation'))
+    return redirect(url_for('dashboard'))
+
+@app.route('/signup')
+def signup():
+    """Render the signup page. Manual username/password signup is disabled; users
+    should sign up with Google via the provided button which starts the OAuth flow
+    at `/login/google`.
+    """
     return render_template('signup.html')
 
 @app.route('/select-nation', methods=['GET', 'POST'])
 def select_nation():
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login_google'))
     
     # Check if user already has a nation in the database
     user = users_collection.find_one({'_id': ObjectId(session['user_id'])})
@@ -873,7 +887,7 @@ def select_nation():
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login_google'))
     
     world_cup_date = datetime(2026, 7, 19)
     now = datetime.now()
@@ -1047,7 +1061,7 @@ def dashboard():
 @app.route('/pay-monthly')
 def pay_monthly():
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login_google'))
     
     # Get month from query parameter, default to current month
     selected_month = request.args.get('month', get_current_month_year())
@@ -1155,7 +1169,7 @@ def create_razorpay_order():
 def verify_razorpay_payment():
     """Verify Razorpay payment signature and update database"""
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login_google'))
     
     try:
         # Get payment details from form
@@ -1374,13 +1388,13 @@ def verify_razorpay_payment_ajax():
 def payment_failed():
     """Page shown when payment fails or is cancelled"""
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login_google'))
     return render_template('payment_failed.html')
 
 @app.route('/payment-processing')
 def payment_processing():
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login_google'))
     
     # Get month from query parameter, default to current month
     selected_month = request.args.get('month', get_current_month_year())
@@ -1389,7 +1403,7 @@ def payment_processing():
 @app.route('/claim-reward')
 def claim_reward():
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login_google'))
     
     winning_nation = get_winning_nation()
     
@@ -1438,7 +1452,7 @@ def claim_reward():
 @app.route('/reward-processing')
 def reward_processing():
     if 'user_id' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login_google'))
     
     winning_nation = get_winning_nation()
     return render_template('reward_processing.html', winning_nation=winning_nation)

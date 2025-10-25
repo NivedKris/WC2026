@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "_macros.html" import avatar_img %}
+
 {% block title %}Dashboard - WC 2026{% endblock %}
 
 {% block content %}
@@ -65,8 +67,8 @@
     <!-- Header -->
     <div class="flex items-center bg-black/20 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-10">
         <div class="flex size-12 shrink-0 items-center">
-            <a href="{{ url_for('user_profile') }}" onclick="showProfileLoading(); return true;" class="profile-link">
-                <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="Avatar">
+                <a href="{{ url_for('user_profile') }}" onclick="showProfileLoading(); return true;" class="profile-link">
+                {{ avatar_img(session.avatar_url or 'avatar1.png', alt='Avatar', classes='w-8 h-8 rounded-full object-cover') }}
             </a>
         </div>
         <h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">World Cup 2026</h2>
@@ -158,7 +160,7 @@
     <div class="flex items-center bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-20">
     <div class="flex size-12 shrink-0 items-center">
         <a href="{{ url_for('user_profile') }}" onclick="showProfileLoading(); return true;" class="profile-link">
-            <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="Avatar">
+            {{ avatar_img(session.avatar_url or 'avatar1.png', alt='Avatar', classes='w-8 h-8 rounded-full object-cover') }}
         </a>
     </div>
     <h2 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Dashboard</h2>
@@ -460,7 +462,7 @@
         <div class="flex items-center {% if user[3] >= 3 %}bg-yellow-100 dark:bg-yellow-900/20{% else %}bg-zinc-200 dark:bg-zinc-800{% endif %} p-3 rounded-lg">
             <div class="w-8 text-center text-black dark:text-white font-bold">{{ loop.index }}</div>
             <div class="flex-1 flex items-center gap-3 ml-3">
-                <img class="w-8 h-8 rounded-full object-cover" src="{{ url_for('static', filename='avatars/' + user[2]) if user[2] != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" alt="{{ user[0] }}">
+                {{ avatar_img(user[2] or 'avatar1.png', alt=user[0], classes='w-8 h-8 rounded-full object-cover') }}
                 <span class="text-black dark:text-white">{{ user[0] }}</span>
             </div>
             <div class="flex items-center gap-2">
@@ -478,7 +480,7 @@
     
     <!-- Footer -->
     <div class="footer-branding mt-8 pt-4 border-t border-slate-700">
-        <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
+    <img src="https://cdn.jsdelivr.net/gh/NivedKris/WC2026@main/static/company/mark.png" onerror="this.onerror=null;this.src='{{ url_for('static', filename='company/mark.png') }}'" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
         <p class="text-slate-500 text-xs">Built by <span class="text-primary">MARK.ORG</span> | © 2025 WC 2026</p>
     </div>
     </div> <!-- Close content layer -->

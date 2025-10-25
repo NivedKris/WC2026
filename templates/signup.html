@@ -43,46 +43,14 @@
             
             <h2 class="text-white text-xl font-bold text-center">Create Your Account</h2>
             
-            <form method="POST" class="flex flex-col gap-4">
-                <div class="flex flex-col">
-                    <p class="text-blue-200 text-sm font-medium leading-normal pb-1.5">Username</p>
-                    <input name="username" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-white focus:outline-0 focus:ring-0 border-blue-400/30 bg-slate-700/50 backdrop-blur-sm focus:border-blue-400 h-12 placeholder:text-slate-400 p-3 text-base font-normal leading-normal" placeholder="Choose a username" required>
-                </div>
-                <div class="flex flex-col">
-                    <p class="text-blue-200 text-sm font-medium leading-normal pb-1.5">Email</p>
-                    <input name="email" type="email" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-white focus:outline-0 focus:ring-0 border-blue-400/30 bg-slate-700/50 backdrop-blur-sm focus:border-blue-400 h-12 placeholder:text-slate-400 p-3 text-base font-normal leading-normal" placeholder="Enter your email" required>
-                </div>
-                <div class="flex flex-col">
-                    <p class="text-blue-200 text-sm font-medium leading-normal pb-1.5">Password</p>
-                    <div class="flex w-full flex-1 items-stretch rounded-xl">
-                        <input name="password" type="password" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-l-xl text-white focus:outline-0 focus:ring-0 border-blue-400/30 bg-slate-700/50 backdrop-blur-sm focus:border-blue-400 h-12 placeholder:text-slate-400 p-3 border-r-0 pr-2 text-base font-normal leading-normal" placeholder="Create a password (min 8 characters)" minlength="8" required>
-                        <div class="text-blue-300 flex border border-l-0 border-blue-400/30 bg-slate-700/50 backdrop-blur-sm items-center justify-center pr-3 rounded-r-xl">
-                            <span class="material-symbols-outlined text-xl">lock</span>
-                        </div>
-                    </div>
-                    <p class="text-blue-200 text-xs mt-1">Min 8 characters with letters and numbers</p>
-                </div>
-                
-                <!-- Terms and Conditions -->
-                <div class="bg-slate-700/50 backdrop-blur-sm p-3 rounded-xl border border-blue-400/30">
-                    <div class="flex items-start gap-2">
-                        <input type="checkbox" name="terms_accepted" id="terms_accepted" class="mt-1 w-4 h-4" required>
-                        <label for="terms_accepted" class="text-blue-100 text-xs leading-relaxed">
-                            I agree to the <a href="#" onclick="showTerms(); return false;" class="text-blue-400 font-semibold underline hover:text-blue-300">Terms and Conditions</a>
-                        </label>
-                    </div>
-                </div>
-                
-                <div class="flex">
-                    <button type="submit" id="signupBtn" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 flex-1 bg-primary text-white text-base font-bold leading-normal tracking-[0.015em]">
-                        <span class="truncate">Sign Up</span>
-                    </button>
-                </div>
-            </form>
-            
-            <p class="text-center text-blue-200 text-sm">
-                Already have an account? <a href="{{ url_for('login') }}" class="text-blue-400 font-bold hover:text-blue-300">Login</a>
-            </p>
+            <div class="flex flex-col gap-6 items-center">
+                <p class="text-blue-200 text-base text-center">Sign up with your Google account to create an account automatically.</p>
+                <a href="{{ url_for('login_google') }}" class="flex items-center justify-center gap-3 w-full py-3 rounded-xl bg-white text-black font-semibold max-w-xs">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-5 h-5" />
+                    Sign up with Google
+                </a>
+                <p class="text-center text-blue-200 mt-2">Already have an account? <a href="{{ url_for('login') }}" class="text-blue-400 font-bold hover:text-blue-300">Login with Google</a></p>
+            </div>
         </div>
     </div>
 </div>

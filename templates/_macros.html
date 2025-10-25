@@ -1,0 +1,5 @@
+{% macro avatar_img(filename, alt='', classes='', extra='') -%}
+{%- set cdn = 'https://cdn.jsdelivr.net/gh/NivedKris/WC2026@main/static/avatars/' -%}
+{%- set local = url_for('static', filename='avatars/') -%}
+<img src="{{ cdn + filename }}" alt="{{ alt }}" class="{{ classes }}" onerror="this.onerror=null;this.src='{{ local + filename }}';" {{ extra|safe }} />
+{%- endmacro %}

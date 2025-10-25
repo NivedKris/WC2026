@@ -42,30 +42,14 @@
             
             <h2 class="text-white text-2xl font-bold text-center mb-2">Login to Your Account</h2>
             
-            <form method="POST" class="flex flex-col gap-6" onsubmit="handleLogin(event)">
-                <div class="flex flex-col min-w-40 flex-1">
-                    <p class="text-blue-200 text-base font-medium leading-normal pb-2">Username</p>
-                    <input name="username" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-white focus:outline-0 focus:ring-0 border-blue-400/30 bg-slate-700/50 backdrop-blur-sm focus:border-blue-400 h-14 placeholder:text-slate-400 p-4 text-base font-normal leading-normal" placeholder="Enter your username" required>
-                </div>
-                <div class="flex flex-col min-w-40 flex-1">
-                    <p class="text-blue-200 text-base font-medium leading-normal pb-2">Password</p>
-                    <div class="flex w-full flex-1 items-stretch rounded-xl">
-                        <input name="password" type="password" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-l-xl text-white focus:outline-0 focus:ring-0 border-blue-400/30 bg-slate-700/50 backdrop-blur-sm focus:border-blue-400 h-14 placeholder:text-slate-400 p-4 border-r-0 pr-2 text-base font-normal leading-normal" placeholder="Enter your password" required>
-                        <div class="text-blue-300 flex border border-l-0 border-blue-400/30 bg-slate-700/50 backdrop-blur-sm items-center justify-center pr-4 rounded-r-xl">
-                            <span class="material-symbols-outlined">lock</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="flex pt-2">
-                    <button type="submit" id="loginBtn" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 flex-1 bg-primary text-white text-base font-bold leading-normal tracking-[0.015em]">
-                        <span class="truncate">Login</span>
-                    </button>
-                </div>
-            </form>
-            
-            <p class="text-center text-blue-200">
-                Don't have an account? <a href="{{ url_for('signup') }}" class="text-blue-400 font-bold hover:text-blue-300">Sign up</a>
-            </p>
+            <div class="flex flex-col gap-6 items-center">
+                <p class="text-blue-200 text-base text-center">Sign in with your Google account to continue.</p>
+                <a href="{{ url_for('login_google') }}" class="flex items-center justify-center gap-3 w-full py-3 rounded-xl bg-white text-black font-semibold max-w-xs">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-5 h-5" />
+                    Sign in with Google
+                </a>
+                <p class="text-center text-blue-200 mt-2">Don't have an account? Signing in with Google will create one for you automatically.</p>
+            </div>
         </div>
     </div>
     </div> <!-- Close content layer -->

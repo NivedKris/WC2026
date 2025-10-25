@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "_macros.html" import avatar_img %}
+
 {% block title %}Customize Profile - World Cup Fan Zone{% endblock %}
 
 {% block content %}
@@ -26,12 +28,8 @@
             <h3 class="text-lg font-bold text-white mb-4">Choose Avatar</h3>
             <div class="grid grid-cols-5 gap-3 max-h-96 overflow-y-auto">
                 {% for i in range(1, 26) %}
-                <div class="avatar-option cursor-pointer transform hover:scale-105 transition-transform">
-                    <img src="{{ url_for('static', filename='avatars/avatar' ~ i ~ '.png') }}" 
-                         alt="Avatar {{ i }}" 
-                         class="w-14 h-14 rounded-full border-2 border-transparent hover:border-primary object-cover"
-                         onerror="this.src='{{ url_for('static', filename='avatars/avatar1.png') }}'"
-                         onclick="selectAvatar('avatar{{ i }}.png')">
+                <div class="avatar-option cursor-pointer transform hover:scale-105 transition-transform" onclick="selectAvatar('avatar{{ i }}.png')">
+                    {{ avatar_img('avatar' ~ i ~ '.png', alt='Avatar ' ~ i, classes='w-14 h-14 rounded-full border-2 border-transparent hover:border-primary object-cover') }}
                 </div>
                 {% endfor %}
             </div>
@@ -42,9 +40,7 @@
         <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-6 shadow-sm border border-blue-400/30">
             <h3 class="text-lg font-bold text-white mb-4">Preview</h3>
             <div class="flex items-center gap-4 p-4 bg-gray-100 dark:bg-slate-700 rounded-lg">
-                <img id="preview-avatar" src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url and session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" 
-                     onerror="this.src='{{ url_for('static', filename='avatars/avatar1.png') }}'"
-                     alt="Preview Avatar" class="w-16 h-16 rounded-full">
+             {{ avatar_img(session.avatar_url or 'avatar1.png', alt='Preview Avatar', classes='w-16 h-16 rounded-full', extra="id='preview-avatar'") }}
                 <div>
                     <p class="text-white font-bold">{{ session.username or 'User' }}</p>
                     <p class="text-blue-200 text-sm">Supports: {{ session.nation or 'No nation selected' }}</p>
@@ -65,9 +61,13 @@
 <script>
 let selectedAvatar = '{{ session.avatar_url or "avatar1.png" }}';
 
+// CDN and local bases for avatars (CDN primary, local as fallback)
+const CDN_AVATARS_BASE = '{{ "https://cdn.jsdelivr.net/gh/NivedKris/WC2026@main/static/avatars/" }}';
+const LOCAL_AVATARS_BASE = "{{ url_for('static', filename='avatars/') }}";
+
 function selectAvatar(avatarFilename) {
     selectedAvatar = avatarFilename;
-    document.getElementById('preview-avatar').src = "{{ url_for('static', filename='avatars/') }}" + avatarFilename;
+    document.getElementById('preview-avatar').src = CDN_AVATARS_BASE + avatarFilename;
     
     // Update selection
     document.querySelectorAll('.avatar-option img').forEach(img => {

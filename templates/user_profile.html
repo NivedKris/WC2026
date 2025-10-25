@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% from "_macros.html" import avatar_img %}
+
 {% block title %}My Profile - WC 2026{% endblock %}
 
 {% block content %}
@@ -25,8 +27,7 @@
         <div class="bg-slate-800/70 backdrop-blur-md rounded-xl p-6 shadow-sm border border-blue-400/30 mb-6">
             <div class="flex items-center gap-4 mb-4">
                 <div class="relative">
-                    <img src="{{ url_for('static', filename='avatars/' + session.avatar_url) if session.avatar_url != 'default_avatar.png' else url_for('static', filename='avatars/avatar1.png') }}" 
-                         alt="Avatar" class="w-16 h-16 rounded-full">
+                {{ avatar_img(session.avatar_url or 'avatar1.png', alt='Avatar', classes='w-16 h-16 rounded-full') }}
                     <a href="{{ url_for('profile_customization') }}" class="absolute -bottom-1 -right-1 bg-primary text-white p-1 rounded-full">
                         <span class="material-symbols-outlined text-sm">edit</span>
                     </a>
@@ -124,7 +125,7 @@
         
         <!-- Footer -->
         <div class="footer-branding mt-8 pt-4 border-t border-slate-700">
-            <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
+        <img src="https://cdn.jsdelivr.net/gh/NivedKris/WC2026@main/static/company/mark.png" onerror="this.onerror=null;this.src='{{ url_for('static', filename='company/mark.png') }}'" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
             <p class="text-slate-500 text-xs">Built by <span class="text-primary">MARK.ORG</span> | © 2025 WC 2026</p>
         </div>
     </div>
