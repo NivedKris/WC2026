@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_from_directory
+import socket
 from flask_mail import Mail, Message
+import requests
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 from bson.objectid import ObjectId
@@ -124,6 +126,58 @@ def send_email(subject, recipients, html_body):
         recip_list = [r for r in recip_list if r]
         if not recip_list:
             print('send_email: no valid recipient addresses after filtering')
+            return False
+
+        # If BREVO_API_KEY is configured, send via Brevo's SMTP API (HTTP)
+        brevo_api_key = os.getenv('BREVO_API_KEY')
+        use_brevo = os.getenv('USE_BREVO', 'False').lower() in ('1', 'true', 'yes')
+
+        if brevo_api_key or use_brevo:
+            # Prefer explicit BREVO_API_KEY, but if USE_BREVO is true and no key
+            # is configured we'll fail early with a clear message.
+            if not brevo_api_key:
+                print('send_email: BREVO requested via USE_BREVO but BREVO_API_KEY is not set')
+                return False
+
+            brevo_url = 'https://api.brevo.com/v3/smtp/email'
+            headers = {
+                'accept': 'application/json',
+                'api-key': brevo_api_key,
+                'content-type': 'application/json'
+            }
+
+            # Build payload
+            sender_email = app.config.get('MAIL_DEFAULT_SENDER') or os.getenv('MAIL_DEFAULT_SENDER') or 'no-reply@wc2026.onrender.com'
+            sender_name = os.getenv('MAIL_SENDER_NAME', 'WC2026')
+            to_list = [{'email': r} for r in recip_list]
+
+            payload = {
+                'sender': {'name': sender_name, 'email': sender_email},
+                'to': to_list,
+                'subject': subject,
+                'htmlContent': html_body
+            }
+
+            try:
+                resp = requests.post(brevo_url, json=payload, headers=headers, timeout=10)
+                if resp.status_code in (200, 201):
+                    return True
+                else:
+                    print(f'send_email: Brevo API error {resp.status_code}: {resp.text}')
+                    return False
+            except Exception as e:
+                print('send_email: Brevo request failed:', e)
+                return False
+
+        # Fallback: send using configured SMTP (Flask-Mail). Keep the TCP pre-check
+        mail_server = app.config.get('MAIL_SERVER')
+        mail_port = app.config.get('MAIL_PORT')
+        try:
+            if mail_server:
+                sock = socket.create_connection((mail_server, int(mail_port)), timeout=5)
+                sock.close()
+        except Exception as conn_err:
+            print(f'send_email: cannot connect to SMTP {mail_server}:{mail_port} - {conn_err}')
             return False
 
         # Ensure Message creation and sending happen inside an application context
