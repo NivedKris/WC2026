@@ -14,22 +14,29 @@
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     
     <title>{% block title %}WC 2026 - May Your Nation Lead You to Glory{% endblock %}</title>
-    <!-- If user is returning from Razorpay, prevent initial page paint and show a processing overlay immediately -->
-    <style id="rp-early-style">.rp-hide body > *{visibility:hidden !important;}</style>
+    <!-- Early payment processing overlay (used when returning from a UPI app) -->
+    <style id="payment-early-style">.rp-hide body > *{visibility:hidden !important;}</style>
     <script>
         (function(){
             try {
                 var _f = null;
-                try { _f = sessionStorage.getItem('razorpay_checkout_opened'); } catch(e) { _f = null; }
+                try { _f = sessionStorage.getItem('payment_checkout_opened'); } catch(e) { _f = null; }
                 if (_f) {
-                    // prevent the page from painting underlying content
                     document.documentElement.classList.add('rp-hide');
-                    // inject an immediate overlay element
                     var ol = document.createElement('div');
                     ol.id = 'paymentProcessingOverlay';
                     ol.className = 'rp-overlay';
                     ol.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
-                    ol.innerHTML = '<div class="rp-card text-center rounded-lg p-6 bg-slate-900/70 backdrop-blur-sm">\n                            <div class="mb-4 flex h-24 w-24 items-center justify-center mx-auto">\n                                <div class="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>\n                                <span class="material-symbols-outlined text-4xl text-primary animate-pulse">payments</span>\n                            </div>\n                            <p class="text-white text-lg font-semibold mb-1">Processing your payment...</p>\n                            <p class="text-blue-300 text-sm">Confirming with Razorpay — this should only take a moment.</p>\n                        </div>';
+                    ol.innerHTML = `
+                        <div class="rp-card text-center rounded-lg p-6 bg-slate-900/70 backdrop-blur-sm">
+                            <div class="mb-4 flex h-24 w-24 items-center justify-center mx-auto">
+                                <div class="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+                                <span class="material-symbols-outlined text-4xl text-primary animate-pulse">payments</span>
+                            </div>
+                            <p class="text-white text-lg font-semibold mb-1">Processing your payment...</p>
+                            <p class="text-blue-300 text-sm">Confirming your payment — this should only take a moment.</p>
+                        </div>
+                    `;
                     try { document.documentElement.appendChild(ol); } catch(e) { try { document.body.appendChild(ol); } catch(e) {} }
                     setTimeout(function(){ try{ ol.classList.add('rp-visible'); }catch(e){} }, 20);
                 }
@@ -145,6 +152,9 @@
         
         // Dashboard loading overlay
         function showDashboardLoading() {
+            // Clear any lingering payment overlay flag and element
+            try { sessionStorage.removeItem('payment_checkout_opened'); } catch(e) {}
+            try { var early = document.getElementById('paymentProcessingOverlay'); if (early) { early.parentNode && early.parentNode.removeChild(early); } document.documentElement.classList.remove('rp-hide'); } catch(e) {}
             const overlay = document.createElement('div');
             overlay.id = 'dashboardLoadingOverlay';
             overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center';
@@ -168,6 +178,9 @@
 
         // Profile loading overlay
         function showProfileLoading() {
+            // Clear any lingering payment overlay flag and element
+            try { sessionStorage.removeItem('payment_checkout_opened'); } catch(e) {}
+            try { var early = document.getElementById('paymentProcessingOverlay'); if (early) { early.parentNode && early.parentNode.removeChild(early); } document.documentElement.classList.remove('rp-hide'); } catch(e) {}
             const overlay = document.createElement('div');
             overlay.id = 'profileLoadingOverlay';
             overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center';
@@ -191,12 +204,15 @@
         
         // Helper function to redirect to dashboard with loading
         function goToDashboard() {
+            // Ensure we clear any lingering payment overlay flag before navigating
+            try { sessionStorage.removeItem('payment_checkout_opened'); } catch(e) {}
             showDashboardLoading();
             window.location.href = '/dashboard';
         }
 
         // Helper function to redirect to profile with loading
         function goToProfile() {
+            try { sessionStorage.removeItem('payment_checkout_opened'); } catch(e) {}
             showProfileLoading();
             window.location.href = '/user_profile';
         }

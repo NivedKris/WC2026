@@ -9,7 +9,7 @@
         (function(){
             try {
                 var _rp_flag = null;
-                try { _rp_flag = sessionStorage.getItem('razorpay_checkout_opened'); } catch(e) { _rp_flag = null; }
+                try { _rp_flag = sessionStorage.getItem('payment_checkout_opened'); } catch(e) { _rp_flag = null; }
                 if (_rp_flag && !document.getElementById('paymentProcessingOverlay')) {
                     var ol = document.createElement('div');
                     ol.id = 'paymentProcessingOverlay';
@@ -45,7 +45,7 @@
             <span class="material-symbols-outlined text-7xl text-primary">payments</span>
         </div>
         
-        <h1 class="text-white tracking-light text-[32px] font-bold leading-tight pb-3 pt-6">Pay with Razorpay</h1>
+    <h1 class="text-white tracking-light text-[32px] font-bold leading-tight pb-3 pt-6">Pay with UPI (Google Pay)</h1>
         
         <p class="text-blue-200 text-base font-normal leading-normal pb-3 pt-1 max-w-md">
             Support your nation <strong>{{ session.nation }}</strong> for <strong>{{ current_month }}</strong>
@@ -62,13 +62,13 @@
             </div>
             <div class="flex items-center justify-between">
                 <span class="text-blue-200 text-sm">Payment Method</span>
-                <span class="text-white text-sm">Razorpay (Card/UPI/Netbanking)</span>
+                <span class="text-white text-sm">UPI (Google Pay / PhonePe / Paytm)</span>
             </div>
         </div>
 
         <div class="mt-8 w-full max-w-sm space-y-3">
-            <button id="razorpayButton" onclick="initiatePayment()" class="flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl h-14 px-5 bg-primary hover:bg-primary/90 text-white text-base font-bold leading-normal tracking-[0.015em] transition-all">
-                <span class="material-symbols-outlined">credit_card</span>
+            <button id="upiButton" onclick="initiatePayment()" class="flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl h-14 px-5 bg-green-600 hover:bg-green-700 text-white text-base font-bold leading-normal tracking-[0.015em] transition-all">
+                <span class="material-symbols-outlined">payment</span>
                 <span id="buttonText">Pay ₹50 Now</span>
             </button>
             
@@ -79,157 +79,206 @@
 
         <div class="mt-6 flex items-center gap-2 text-blue-200 text-xs">
             <span class="material-symbols-outlined text-sm">lock</span>
-            <span>Secure payment powered by Razorpay</span>
+            <span>Secure payment via UPI app on your device</span>
         </div>
     </div>
     </div> <!-- Close content layer -->
 </div>
 
-<!-- Razorpay Checkout Script -->
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-
+<!-- UPI (Google Pay) flow -->
 <script>
 const currentMonth = "{{ current_month }}";
 
-function initiatePayment() {
-    const button = document.getElementById('razorpayButton');
-    const buttonText = document.getElementById('buttonText');
-    
-    // Disable button and show loading
-    button.disabled = true;
-    buttonText.textContent = 'Creating order...';
-    
-    // Step 1: Create Razorpay order
-    fetch('/create-razorpay-order', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            month: currentMonth
-        })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to create order');
-        }
-        return response.json();
-    })
-    .then(order => {
-        // Step 2: Configure Razorpay options
-        const options = {
-            "key": order.key_id,
-            "amount": order.amount,
-            "currency": order.currency,
-            "name": "WC 2026 Fan Zone",
-            "description": "Monthly Support for " + currentMonth,
-            "order_id": order.order_id,
-            // use handler mode to verify via AJAX and avoid a server redirect flash
-            "handler": function (response){
-                try { sessionStorage.setItem('razorpay_checkout_opened', order.order_id || '1'); } catch (e) {}
-                // show immediate overlay
-                try {
-                    var overlay = document.getElementById('paymentProcessingOverlay');
-                    if (!overlay) {
-                        overlay = document.createElement('div');
-                        overlay.id = 'paymentProcessingOverlay';
-                        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;';
-                        overlay.innerHTML = '<div class="text-center"><div class="mb-4 flex h-28 w-28 items-center justify-center mx-auto"><div class="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div><span class="material-symbols-outlined text-5xl text-primary animate-pulse">payments</span></div><p class="text-white text-xl font-bold mb-2">Processing your payment...</p><p class="text-blue-300 text-sm">Please wait while we confirm your payment with Razorpay.</p></div>';
-                            overlay.innerHTML = '<div class="text-center"><div class="mb-4 flex h-28 w-28 items-center justify-center mx-auto"><span class="material-symbols-outlined text-5xl text-primary animate-pulse">payments</span></div><p class="text-white text-xl font-bold mb-2">Processing your payment...</p><p class="text-blue-300 text-sm">Please wait while we confirm your payment with Razorpay.</p></div>';
-                        try { document.documentElement.appendChild(overlay); } catch(e) { document.body.appendChild(overlay); }
-                    }
-                } catch(e){}
+// Use local server-side wake endpoint so browser doesn't call the external webhook directly
+const PAYMENT_WEBHOOK = '/wake-webhook';
 
-                // Send verification to server via AJAX
-                fetch('/verify-razorpay-payment-ajax', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        razorpay_payment_id: response.razorpay_payment_id,
-                        razorpay_order_id: response.razorpay_order_id,
-                        razorpay_signature: response.razorpay_signature
-                    })
-                }).then(r => r.json()).then(json => {
-                    // clear local flag
-                    try { sessionStorage.removeItem('razorpay_checkout_opened'); } catch(e) {}
-                    if (json && json.status === 'ok') {
-                        window.location.href = '/payment-success';
-                    } else {
-                        window.location.href = '/payment-failed';
-                    }
-                }).catch(err => {
-                    console.error('AJAX verify error', err);
-                    window.location.href = '/payment-failed';
-                });
-            },
-            "prefill": {
-                "name": "{{ session.username }}",
-                "email": "{{ session.get('email', '') }}"
-            },
-            "theme": {
-                "color": "#1e40af"
-            },
-            "modal": {
-                "ondismiss": function() {
-                    // Re-enable button if user closes modal
-                    button.disabled = false;
-                    buttonText.textContent = 'Pay ₹50 Now';
-                    try { sessionStorage.removeItem('razorpay_checkout_opened'); } catch (e) {}
-                }
+function showWebhookOverlay(msg) {
+    // create or reuse an overlay element
+    let el = document.getElementById('webhookOverlay');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'webhookOverlay';
+        el.className = 'fixed inset-0 bg-black/72 z-50 flex items-center justify-center p-4';
+        el.innerHTML = `
+            <div class="text-center p-6 rounded-xl bg-slate-900/80 backdrop-blur-sm max-w-md w-full">
+                <div class="mb-4 flex h-20 w-20 items-center justify-center mx-auto">
+                    <!-- Removed rotating ring per request; keep a subtle pulsing icon -->
+                    <span class="material-symbols-outlined text-4xl text-primary animate-pulse">cloud_sync</span>
+                </div>
+                <p id="webhookOverlayText" class="text-white text-lg font-semibold mb-2">${msg}</p>
+                <p class="text-blue-300 text-sm">Waking payment servers — this may take 30–40 seconds.</p>
+                <div class="mt-4">
+                    <button id="webhookRetryBtn" class="mt-2 px-4 py-2 rounded bg-primary text-white">Retry</button>
+                </div>
+            </div>`;
+        document.body.appendChild(el);
+    } else {
+        const t = document.getElementById('webhookOverlayText'); if (t) t.textContent = msg;
+        el.classList.remove('hidden');
+    }
+}
+
+function hideWebhookOverlay(){
+    const el = document.getElementById('webhookOverlay');
+    if (el) {
+        try{ el.parentNode && el.parentNode.removeChild(el); }catch(e){}
+    }
+}
+
+async function ensureWebhookUp(maxAttempts=5, perAttemptMs=50000){
+    // Attempt to GET the webhook with a longer timeout suitable for cold-start wakeups.
+    // Default: 5 attempts x 10s = up to ~50s total; adjust if needed.
+    let attempt = 0;
+    while(attempt < maxAttempts){
+        attempt++;
+        showWebhookOverlay('Checking payment servers (attempt ' + attempt + ' of ' + maxAttempts + ')');
+        try{
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), perAttemptMs);
+            const resp = await fetch(PAYMENT_WEBHOOK, { method: 'GET', cache: 'no-store', signal: controller.signal, mode: 'cors', headers: { 'Accept': 'application/json' } });
+            clearTimeout(timeout);
+            if (resp && resp.status === 200){
+                hideWebhookOverlay();
+                return true;
             }
+        }catch(e){
+            console.warn('ensureWebhookUp attempt failed:', e && e.name ? e.name : e);
+        }
+        // brief backoff before next attempt (capped)
+        const backoff = 1000 * attempt; // 1s, 2s, 3s ...
+        await new Promise(r => setTimeout(r, Math.min(backoff, 4000)));
+    }
+    // final failure: leave overlay with a retry button enabled. Make retry run a single immediate attempt.
+    const retryBtn = document.getElementById('webhookRetryBtn');
+    if (retryBtn) {
+        retryBtn.onclick = async function(){
+            try { retryBtn.disabled = true; } catch(e){}
+            // run one attempt only with the same timeout
+            showWebhookOverlay('Retrying payment server wake (single attempt)');
+            let ok = false;
+            try{
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), perAttemptMs);
+                const resp = await fetch(PAYMENT_WEBHOOK, { method: 'GET', cache: 'no-store', signal: controller.signal, mode: 'cors', headers: { 'Accept': 'application/json' } });
+                clearTimeout(timeout);
+                ok = (resp && resp.status === 200);
+            }catch(e){ console.warn('retry single attempt failed', e); }
+            if(ok) hideWebhookOverlay();
+            try { retryBtn.disabled = false; } catch(e){}
+            return ok;
         };
-        
-        // Step 3: Open Razorpay Checkout
-        const rzp = new Razorpay(options);
-            // Mark that checkout was opened so returning users show processing immediately
-            try { sessionStorage.setItem('razorpay_checkout_opened', order.order_id || '1'); } catch (e) {}
-        rzp.open();
-        
-        // Re-enable button after opening
-        button.disabled = false;
-        buttonText.textContent = 'Pay ₹50 Now';
-    })
-    .catch(err => {
-        console.error('Error:', err);
-        alert('Failed to create payment order. Please try again.');
-        button.disabled = false;
-        buttonText.textContent = 'Pay ₹50 Now';
-    });
+    }
+    return false;
+}
+
+// On page load, proactively ensure webhook is up before enabling Pay button
+document.addEventListener('DOMContentLoaded', async function(){
+    const payBtn = document.getElementById('upiButton');
+    if(!payBtn) return;
+    // disable until webhook health-check completes
+    try { payBtn.disabled = true; } catch(e){}
+    const ok = await ensureWebhookUp(5, 50000);
+    if(ok){
+        try { payBtn.disabled = false; } catch(e){}
+    } else {
+        // show a non-blocking message and leave pay disabled until user retries via overlay
+        try { payBtn.disabled = true; } catch(e){}
+        alert('Payment servers could not be woken automatically. Press Retry in the overlay to try again.');
+    }
+});
+
+async function initiatePayment(){
+    const button = document.getElementById('upiButton');
+    const buttonText = document.getElementById('buttonText');
+    button.disabled = true;
+    buttonText.textContent = 'Preparing...';
+
+    try{
+        const resp = await fetch('{{ url_for("create_razorpay_order") }}', {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ month: currentMonth })
+        });
+        const data = await resp.json();
+        if(resp.ok && data.order_id){
+            // Save flag so returning users show processing overlay
+            try { sessionStorage.setItem('payment_checkout_opened', data.order_id); } catch(e){}
+            // Ensure the payment webhook is awake before opening UPI
+            const ok = await ensureWebhookUp(6, 50000);
+            if(!ok){
+                alert('Could not wake payment servers. Please try again in a moment.');
+                try { sessionStorage.removeItem('payment_checkout_opened'); } catch(e){}
+                return;
+            }
+
+            // Construct UPI URL and open app
+            const pa = encodeURIComponent('{{ UPI_ID }}');
+            const pn = encodeURIComponent('{{ session.get("username", "WC2026") }}');
+            const am = '50';
+            const cu = 'INR';
+            const tn = encodeURIComponent('WC2026 monthly payment for ' + currentMonth);
+            const upiUrl = `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=${cu}&tn=${tn}`;
+
+            try{ window.location.href = upiUrl; } catch(e){ alert('Please open your UPI app and pay to ' + decodeURIComponent(pa)); }
+
+            // show modal after a short delay so user can enter txn id after paying
+            setTimeout(()=>{
+                try { button.disabled = false; buttonText.textContent = 'Pay ₹50 Now'; } catch(e){}
+                const modal = document.getElementById('transactionModal');
+                if(modal) modal.classList.remove('hidden');
+            }, 800);
+            return;
+        } else {
+            throw new Error(data.error || 'order_failed');
+        }
+    } catch(err){
+        console.error('initiatePayment error', err);
+        alert('Unable to start payment. Please try again.');
+    } finally {
+        try { button.disabled = false; buttonText.textContent = 'Pay ₹50 Now'; } catch(e){}
+    }
+}
+
+function showTransactionModal(){
+    const modal = document.getElementById('transactionModal');
+    if(modal) modal.classList.remove('hidden');
+}
+
+function closeTransactionModal(){
+    const modal = document.getElementById('transactionModal');
+    if(modal) modal.classList.add('hidden');
+}
+
+async function verifyTransaction(){
+    const txnId = document.getElementById('txnIdInput').value.trim();
+    const statusEl = document.getElementById('txnStatus');
+    if(!txnId){ statusEl.innerText = 'Please enter transaction id'; return; }
+    const btn = document.getElementById('verifyTxnBtn');
+    btn.disabled = true; btn.innerText = 'Verifying...';
+    try{
+        const resp = await fetch('{{ url_for("verify_upi_transaction") }}', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ transaction_id: txnId }) });
+        const data = await resp.json();
+        if(data.status === 'ok'){
+            statusEl.innerHTML = '<span class="text-green-400">Payment verified — redirecting...</span>';
+            setTimeout(()=>{ window.location.href = '/payment-success'; }, 900);
+        } else {
+            statusEl.innerHTML = `<span class="text-red-400">${data.message || 'Not found'}</span>`;
+        }
+    }catch(err){
+        statusEl.innerHTML = '<span class="text-red-400">Verification failed. Try again.</span>';
+    } finally { btn.disabled = false; btn.innerText = 'Verify'; }
 }
 </script>
-    <script>
-    // If the user returns to this page after opening Razorpay, show immediate processing overlay
-    document.addEventListener('DOMContentLoaded', function() {
-        try {
-            const flag = sessionStorage.getItem('razorpay_checkout_opened');
-            if (flag) {
-                // show processing overlay and disable UI so user sees immediate feedback
-                const btn = document.getElementById('razorpayButton');
-                if (btn) {
-                    btn.disabled = true;
-                    const btText = document.getElementById('buttonText');
-                    if (btText) btText.textContent = 'Processing payment...';
-                }
-                // create overlay
-                const overlay = document.createElement('div');
-                overlay.id = 'paymentProcessingOverlay';
-                overlay.className = 'rp-overlay';
-                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;';
-                overlay.innerHTML = `
-                    <div class="rp-card text-center rounded-lg p-4 bg-slate-900/70 backdrop-blur-sm">
-                        <div class="mb-4 flex h-20 w-20 items-center justify-center mx-auto">
-                            <span class="material-symbols-outlined text-4xl text-primary animate-pulse">payments</span>
-                        </div>
-                        <p class="text-white text-lg font-semibold mb-1">Processing your payment...</p>
-                        <p class="text-blue-300 text-sm">Confirming with Razorpay — this should only take a moment.</p>
-                    </div>
-                `;
-                document.body.appendChild(overlay);
-                setTimeout(function(){ try{ overlay.classList.add('rp-visible'); }catch(e){} }, 20);
-            }
-        } catch (e) {
-            console.warn('Could not read razorpay flag', e);
-        }
-    });
-    </script>
+
+<!-- Reuse transaction modal from user_profile (if present globally) or render one here -->
+<div id="transactionModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-background-light dark:bg-background-dark rounded-xl p-6 w-full max-w-md">
+        <h4 class="text-lg font-bold text-white mb-2">Enter Transaction ID</h4>
+        <p class="text-slate-300 text-sm mb-4">Please enter the 12-digit UPI transaction ID you received after payment.</p>
+        <input id="txnIdInput" type="text" maxlength="20" placeholder="Transaction ID" class="w-full p-2 rounded-md bg-slate-800 text-white mb-3" />
+        <div class="flex justify-end gap-2">
+            <button onclick="closeTransactionModal()" class="px-4 py-2 rounded bg-gray-300">Cancel</button>
+            <button onclick="verifyTransaction()" id="verifyTxnBtn" class="px-4 py-2 rounded bg-primary text-white">Verify</button>
+        </div>
+        <div id="txnStatus" class="mt-3 text-sm"></div>
+    </div>
+</div>
 {% endblock %}

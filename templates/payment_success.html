@@ -28,7 +28,7 @@
         <h1 class="text-white tracking-light text-[28px] font-bold leading-tight pb-3">Verifying Payment...</h1>
         
         <p class="text-blue-200 text-base font-normal leading-normal max-w-md">
-            Please wait while we confirm your payment with Razorpay.
+            Please wait while we confirm your payment.
         </p>
 
         <div class="mt-6 flex items-center gap-2">
@@ -70,8 +70,8 @@
 </div>
 
 <script>
-// Clear razorpay flag, remove any early overlay and restore page paint
-try { sessionStorage.removeItem('razorpay_checkout_opened'); } catch (e) {}
+// Clear payment flag, remove any early overlay and restore page paint
+try { sessionStorage.removeItem('payment_checkout_opened'); } catch (e) {}
 try {
     var early = document.getElementById('paymentProcessingOverlay');
     if (early) {

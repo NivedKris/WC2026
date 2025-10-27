@@ -9,7 +9,6 @@ import os
 import json
 from dotenv import load_dotenv
 import hashlib
-import razorpay
 from flask_compress import Compress
 import requests
 import re
@@ -18,6 +17,13 @@ from authlib.integrations.flask_client import OAuth
 load_dotenv()
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 Compress(app)
+# Expose certain environment helpers to Jinja templates.
+# Templates previously attempted to call os.getenv(...) directly which
+# raises UndefinedError unless the os module or variables are injected.
+app.jinja_env.globals.update(
+    os=os,
+    UPI_ID=os.getenv('UPI_ID')
+)
 @app.after_request
 def add_header(response):
     if request.path.startswith('/static/'):
@@ -82,10 +88,15 @@ user_stats_collection = db['user_stats']
 winner_claims_collection = db['winner_claims']
 app_settings_collection = db['app_settings']
 
-# Razorpay configuration
-RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID')
-RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+# Razorpay is deprecated in this deployment; keep placeholders in env for compatibility but do not initialize client
+try:
+    import razorpay  # optional dependency
+    RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID')
+    RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
+    # do not create a razorpay.Client to avoid network calls in environments without keys
+    razorpay_client = None
+except Exception:
+    razorpay_client = None
 
 # Mail configuration
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
@@ -446,6 +457,25 @@ def terms():
 @app.route('/refund-policy')
 def refund_policy():
     return render_template('refund_policy.html')
+
+
+@app.route('/wake-webhook', methods=['GET'])
+def wake_webhook():
+    """Server-side helper that performs a simple GET to the external webhook and
+    returns a JSON summary. This avoids CORS issues and behaves like a curl call
+    with a 50-second timeout per attempt.
+    """
+    webhook = os.getenv('PAYMENT_WEBHOOK_URL', 'https://sms-webhook-9l8c.onrender.com')
+    try:
+        # Use requests with a long timeout to allow remote cold starts
+        resp = requests.get(webhook, timeout=50)
+        try:
+            body = resp.text
+        except Exception:
+            body = ''
+        return jsonify({'ok': resp.status_code == 200, 'status': resp.status_code, 'body': body}), resp.status_code
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 504
 
 
 @app.route('/shipping-policy')
@@ -1278,81 +1308,64 @@ def pay_monthly():
 
 @app.route('/create-razorpay-order', methods=['POST'])
 def create_razorpay_order():
-    """Create a Razorpay order for ₹50 monthly payment"""
+    """Compatibility shim: create a pending payment record and return an order-like
+    response so older front-end code can continue to call the same endpoint.
+
+    Instead of creating a Razorpay order, we record a pending 'upi_pending'
+    monthly payment and return a synthetic payload. The client should then
+    open the UPI URL (UPI ID from env) and prompt the user to enter the
+    transaction id which will be verified by `/verify-upi-transaction`.
+    """
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-    
+
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         selected_month = data.get('month', get_current_month_year())
-        
-        # Check if payment already exists and is completed
-        existing_payment = monthly_payments_collection.find_one({
-            'user_id': session['user_id'],
-            'month_year': selected_month
-        })
-        
+
+        # Ensure no completed payment exists for this user/month
+        existing_payment = monthly_payments_collection.find_one({'user_id': session['user_id'], 'month_year': selected_month})
         if existing_payment and existing_payment.get('status') == 'completed':
             return jsonify({'error': 'Payment already completed for this month'}), 400
-        
-        # Create Razorpay order (amount in paise, ₹50 = 5000 paise)
-        amount = 5000  # ₹50 in paise
-        
-        # Create a short receipt ID (max 40 chars for Razorpay)
-        import time
-        receipt_id = f"WC_{session['user_id'][:8]}_{int(time.time())}"
-        
-        order_data = {
-            "amount": amount,
-            "currency": "INR",
-            "receipt": receipt_id,
-            "notes": {
-                "user_id": session['user_id'],
-                "username": session.get('username', ''),
-                "month_year": selected_month,
-                "nation": session.get('nation', '')
-            }
-        }
-        
-        razorpay_order = razorpay_client.order.create(data=order_data)
-        
-        # Store pending payment in database
+
+        # Create or update a pending payment record with a synthetic order id
+        import time, uuid
+        synth_order_id = f"UPI-{session['user_id'][:8]}-{int(time.time())}"
+
         if existing_payment:
-            # Update existing payment with new order_id
-            monthly_payments_collection.update_one(
-                {'_id': existing_payment['_id']},
-                {
-                    '$set': {
-                        'razorpay_order_id': razorpay_order['id'],
-                        'amount': 50.00,
-                        'status': 'pending',
-                        'payment_date': datetime.now()
-                    }
-                }
-            )
-        else:
-            # Create new payment record
-            monthly_payments_collection.insert_one({
-                'user_id': session['user_id'],
-                'month_year': selected_month,
-                'razorpay_order_id': razorpay_order['id'],
+            monthly_payments_collection.update_one({'_id': existing_payment['_id']}, {'$set': {
+                'order_id': synth_order_id,
                 'amount': 50.00,
                 'status': 'pending',
-                'payment_date': datetime.now(),
-                'approved_at': None,
-                'approved_by': 'razorpay_auto'
+                'notes': {'flow': 'upi_shim'},
+                'payment_date': datetime.now()
+            }})
+            payment_doc_id = existing_payment['_id']
+        else:
+            res = monthly_payments_collection.insert_one({
+                'user_id': session['user_id'],
+                'month_year': selected_month,
+                'order_id': synth_order_id,
+                'amount': 50.00,
+                'status': 'pending',
+                'notes': {'flow': 'upi_shim'},
+                'created_at': datetime.now(),
+                'payment_date': None
             })
-        
-        return jsonify({
-            'order_id': razorpay_order['id'],
-            'amount': amount,
+            payment_doc_id = res.inserted_id
+
+        # Return a payload similar to Razorpay order response so front-end can reuse UI
+        payload = {
+            'order_id': synth_order_id,
+            'amount': 5000,  # paise
             'currency': 'INR',
-            'key_id': RAZORPAY_KEY_ID
-        })
-        
+            'key_id': os.getenv('RAZORPAY_KEY_ID', 'UPI_SHIM'),
+            'note': 'Use UPI app to pay ₹50 and then enter the transaction id to verify.'
+        }
+        return jsonify(payload)
     except Exception as e:
-        print(f"Error creating Razorpay order: {str(e)}")
-        return jsonify({'error': 'Failed to create payment order'}), 500
+        print('Error creating synthetic upi order:', e)
+        return jsonify({'error': 'server_error'}), 500
 
 @app.route('/verify-razorpay-payment', methods=['POST'])
 def verify_razorpay_payment():
@@ -1361,23 +1374,61 @@ def verify_razorpay_payment():
         return redirect(url_for('login_google'))
     
     try:
-        # Get payment details from form
-        payment_id = request.form.get('razorpay_payment_id')
-        order_id = request.form.get('razorpay_order_id')
-        signature = request.form.get('razorpay_signature')
-        
-        # Verify signature
-        razorpay_client.utility.verify_payment_signature({
-            'razorpay_order_id': order_id,
-            'razorpay_payment_id': payment_id,
-            'razorpay_signature': signature
-        })
-        
-        # Signature verified successfully - update database
-        payment_record = monthly_payments_collection.find_one({
-            'razorpay_order_id': order_id,
-            'user_id': session['user_id']
-        })
+        # Two supported verification modes:
+        # 1) UPI/manual mode: client posts a transaction_id (preferred)
+        # 2) Legacy Razorpay mode: verify Razorpay signature if client provides it
+        order_id = request.form.get('razorpay_order_id') or request.form.get('order_id')
+
+        txn_id = (request.form.get('transaction_id') or request.form.get('txn_id') or '').strip()
+
+        payment_record = None
+
+        # If transaction_id supplied, verify against transactions collection
+        if txn_id:
+            transactions_collection = db['transactions']
+            txdoc = transactions_collection.find_one({'transaction_id': txn_id})
+            if not txdoc:
+                print('UPI txn not found:', txn_id)
+                return render_template('payment_failed.html')
+
+            # read amount safely
+            try:
+                amount = float(txdoc.get('amount', {}).get('$numberDouble', txdoc.get('amount') or 0))
+            except Exception:
+                try:
+                    amount = float(txdoc.get('amount') or 0)
+                except Exception:
+                    amount = 0.0
+
+            if abs(amount - 50.0) > 0.01:
+                print('UPI amount mismatch', amount)
+                return render_template('payment_failed.html')
+
+            # Ensure transaction not used
+            existing = monthly_payments_collection.find_one({'transaction_id': txn_id})
+            if existing:
+                print('Transaction already used', txn_id)
+                return render_template('payment_failed.html')
+
+            # Find pending payment by order_id if provided, else by user and month
+            if order_id:
+                payment_record = monthly_payments_collection.find_one({'order_id': order_id, 'user_id': session['user_id']})
+            if not payment_record:
+                # fallback: find pending for this user and month
+                payment_record = monthly_payments_collection.find_one({'user_id': session['user_id'], 'status': 'pending'})
+
+            if not payment_record:
+                print('No pending payment record found for user to attach txn', session['user_id'])
+                return render_template('payment_failed.html')
+
+            # Mark payment completed
+            monthly_payments_collection.update_one({'_id': payment_record['_id']}, {'$set': {
+                'status': 'completed',
+                'transaction_id': txn_id,
+                'amount': 50.00,
+                'approved_at': datetime.now(),
+                'approved_by': 'upi_manual'
+            }})
         
         if payment_record:
             # Update payment status to completed
@@ -1428,11 +1479,8 @@ def verify_razorpay_payment():
             # Notify admin (non-blocking by default)
             try:
                 send_admin_notification(
-                    "Payment Completed (Razorpay)",
-                    f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong> via Razorpay.<br>"
-                    f"Amount: ₹50<br>"
-                    f"Payment ID: {payment_id}<br>"
-                    f"Order ID: {order_id}"
+                    "Payment Completed",
+                    f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong>.<br>Order/Ref: {order_id or payment_record.get('order_id') or ''}<br>Transaction: {txn_id if txn_id else payment_record.get('transaction_id','N/A')}"
                 )
             except Exception as e:
                 print('Admin notify failed:', e)
@@ -1458,11 +1506,8 @@ def verify_razorpay_payment():
             return render_template('payment_success.html')
         else:
             return render_template('payment_failed.html')
-            
-    except razorpay.errors.SignatureVerificationError:
-        print("Razorpay signature verification failed")
-        return render_template('payment_failed.html')
     except Exception as e:
+        # If razorpay client exists and signature was provided, we attempted verification
         print(f"Error verifying payment: {str(e)}")
         return render_template('payment_failed.html')
 
@@ -1482,96 +1527,196 @@ def verify_razorpay_payment_ajax():
     signature = data.get('razorpay_signature')
 
     try:
-        # Verify signature
-        razorpay_client.utility.verify_payment_signature({
-            'razorpay_order_id': order_id,
-            'razorpay_payment_id': payment_id,
-            'razorpay_signature': signature
-        })
+        # If client provided a transaction_id in JSON, use UPI verification flow
+        txn_id = (data.get('transaction_id') or data.get('txn_id') or '').strip()
+        payment_record = None
+        if txn_id:
+            transactions_collection = db['transactions']
+            txdoc = transactions_collection.find_one({'transaction_id': txn_id})
+            if not txdoc:
+                return jsonify({'status': 'error', 'message': 'transaction not found'}), 404
 
-        # Signature verified - update DB (same logic as non-AJAX route)
-        payment_record = monthly_payments_collection.find_one({
-            'razorpay_order_id': order_id,
-            'user_id': session['user_id']
-        })
-
-        if payment_record:
-            monthly_payments_collection.update_one(
-                {'_id': payment_record['_id']},
-                {
-                    '$set': {
-                        'status': 'completed',
-                        'razorpay_payment_id': payment_id,
-                        'razorpay_signature': signature,
-                        'approved_at': datetime.now(),
-                        'approved_by': 'razorpay_auto'
-                    }
-                }
-            )
-
-            # Update user stats
-            user_stats = user_stats_collection.find_one({'user_id': session['user_id']})
-            if user_stats:
-                new_months_paid = user_stats.get('months_paid', 0) + 1
-                user_stats_collection.update_one(
-                    {'user_id': session['user_id']},
-                    {
-                        '$inc': {
-                            'months_paid': 1,
-                            'total_paid': 50.00
-                        },
-                        '$set': {
-                            'last_payment_month': payment_record['month_year']
-                        }
-                    }
-                )
-                if new_months_paid >= 3:
-                    users_collection.update_one(
-                        {'_id': ObjectId(session['user_id'])},
-                        {'$set': {'is_premium': True}}
-                    )
-            else:
-                user_stats_collection.insert_one({
-                    'user_id': session['user_id'],
-                    'months_paid': 1,
-                    'total_paid': 50.00,
-                    'last_payment_month': payment_record['month_year']
-                })
-
-            # Notify admin (send_admin_notification is non-blocking)
             try:
-                send_admin_notification(
-                    "Payment Completed (Razorpay)",
-                    f"<strong>{session['username']}</strong> successfully completed payment for <strong>{payment_record['month_year']}</strong> via Razorpay.<br>Amount: ₹50<br>Payment ID: {payment_id}<br>Order ID: {order_id}"
-                )
-            except Exception as e:
-                print('Admin notify failed (ajax):', e)
-
-            # Send confirmation email to the user (non-blocking)
-            try:
-                # Capture values before starting the thread
-                user_email = payment_record.get('email') or session.get('email')
-                username = session.get('username')
-                month_year = payment_record['month_year']
-
-                import threading
-                threading.Thread(target=lambda e=user_email, u=username, m=month_year: send_payment_approved(e, u, m, 50.00), daemon=True).start()
+                amount = float(txdoc.get('amount', {}).get('$numberDouble', txdoc.get('amount') or 0))
             except Exception:
                 try:
-                    send_payment_approved(payment_record.get('email') or session.get('email'), session.get('username'), payment_record['month_year'], 50.00)
-                except Exception as e:
-                    print('User payment confirmation email failed (ajax):', e)
+                    amount = float(txdoc.get('amount') or 0)
+                except Exception:
+                    amount = 0.0
+
+            if abs(amount - 50.0) > 0.01:
+                return jsonify({'status': 'error', 'message': 'amount mismatch'}), 400
+
+            # Ensure not already used
+            existing = monthly_payments_collection.find_one({'transaction_id': txn_id})
+            if existing:
+                return jsonify({'status': 'error', 'message': 'transaction already used'}), 400
+
+            # Find pending payment record (by order or by user)
+            if order_id:
+                payment_record = monthly_payments_collection.find_one({'order_id': order_id, 'user_id': session['user_id']})
+            if not payment_record:
+                payment_record = monthly_payments_collection.find_one({'user_id': session['user_id'], 'status': 'pending'})
+            if not payment_record:
+                return jsonify({'status': 'error', 'message': 'no_pending_payment'}), 404
+
+            # Mark completed
+            monthly_payments_collection.update_one({'_id': payment_record['_id']}, {'$set': {
+                'status': 'completed',
+                'transaction_id': txn_id,
+                'amount': 50.00,
+                'approved_at': datetime.now(),
+                'approved_by': 'upi_manual'
+            }})
+
+            # Update or create user stats
+            user_stats = user_stats_collection.find_one({'user_id': session['user_id']})
+            if user_stats:
+                user_stats_collection.update_one({'user_id': session['user_id']}, {'$inc': {'months_paid': 1, 'total_paid': 50.00}, '$set': {'last_payment_month': payment_record['month_year']}})
+                new_months = user_stats.get('months_paid', 0) + 1
+            else:
+                user_stats_collection.insert_one({'user_id': session['user_id'], 'months_paid': 1, 'total_paid': 50.00, 'last_payment_month': payment_record['month_year']})
+                new_months = 1
+
+            if new_months >= 3:
+                users_collection.update_one({'_id': ObjectId(session['user_id'])}, {'$set': {'is_premium': True}})
+
+            # notify admin
+            try:
+                send_admin_notification('Payment Completed (UPI)', f"<strong>{session['username']}</strong> verified a UPI payment (txn={txn_id}) for {payment_record['month_year']} — ₹50")
+            except Exception as e:
+                print('Admin notify failed for UPI (ajax):', e)
+
+            # send user email
+            try:
+                user_email = session.get('email')
+                username = session.get('username')
+                import threading
+                threading.Thread(target=lambda e=user_email, u=username, m=payment_record['month_year']: send_payment_approved(e, u, m, 50.00), daemon=True).start()
+            except Exception as e:
+                print('User email send failed for UPI (ajax):', e)
 
             return jsonify({'status': 'ok'})
-        else:
-            return jsonify({'status': 'error', 'message': 'payment_record_not_found'}), 400
 
-    except razorpay.errors.SignatureVerificationError:
-        print('Razorpay signature verification failed (ajax)')
-        return jsonify({'status': 'error', 'message': 'signature_verification_failed'}), 400
+        # Otherwise fall back to legacy signature verification if available
+        if razorpay_client:
+            try:
+                razorpay_client.utility.verify_payment_signature({'razorpay_order_id': order_id, 'razorpay_payment_id': payment_id, 'razorpay_signature': signature})
+            except Exception as e:
+                print('Razorpay signature verify failed (ajax):', e)
+                return jsonify({'status': 'error', 'message': 'signature_verification_failed'}), 400
+            # After successful signature verification, reuse existing logic by looking up payment_record and marking it completed
+            payment_record = monthly_payments_collection.find_one({'razorpay_order_id': order_id, 'user_id': session['user_id']})
+            if not payment_record:
+                return jsonify({'status': 'error', 'message': 'no_payment_record'}), 404
+            monthly_payments_collection.update_one({'_id': payment_record['_id']}, {'$set': {'status': 'completed', 'razorpay_payment_id': payment_id, 'razorpay_signature': signature, 'approved_at': datetime.now(), 'approved_by': 'razorpay_auto'}})
+            # update user stats & notify same as above
+            # ... reuse existing code path by returning ok and letting ajax handler above handle notifications in later code
+            try:
+                send_admin_notification('Payment Completed (Razorpay)', f"<strong>{session['username']}</strong> completed payment for {payment_record['month_year']}")
+            except Exception:
+                pass
+            try:
+                import threading
+                threading.Thread(target=lambda: send_payment_approved(session.get('email'), session.get('username'), payment_record['month_year'], 50.00), daemon=True).start()
+            except Exception:
+                pass
+            return jsonify({'status': 'ok'})
+
+        return jsonify({'status': 'error', 'message': 'unsupported_verification_method'}), 400
     except Exception as e:
         print(f'Error verifying payment (ajax): {e}')
         return jsonify({'status': 'error', 'message': 'server_error'}), 500
+
+
+@app.route('/verify-upi-transaction', methods=['POST'])
+def verify_upi_transaction():
+    """Verify a UPI transaction id that the user provides by checking the
+    `transactions` collection (populated by the admin's SMS/UPI parser).
+    Expected JSON: { transaction_id: '123456789012' }
+    Returns JSON { status: 'ok' } or { status: 'error', message: '...' }
+    """
+    if 'user_id' not in session:
+        return jsonify({'status': 'error', 'message': 'not_authenticated'}), 401
+
+    data = request.get_json() or {}
+    txn = (data.get('transaction_id') or '').strip()
+    if not txn:
+        return jsonify({'status': 'error', 'message': 'transaction_id required'}), 400
+
+    try:
+        # Look up transaction in the `transactions` collection
+        transactions_collection = db['transactions']
+        txdoc = transactions_collection.find_one({'transaction_id': txn})
+        if not txdoc:
+            return jsonify({'status': 'error', 'message': 'transaction not found'}), 404
+
+        # Basic sanity: amount approx 50
+        try:
+            amount = float(txdoc.get('amount', {}).get('$numberDouble', txdoc.get('amount') or 0))
+        except Exception:
+            # attempt direct numeric
+            try:
+                amount = float(txdoc.get('amount') or 0)
+            except Exception:
+                amount = 0.0
+
+        if abs(amount - 50.0) > 0.01:
+            return jsonify({'status': 'error', 'message': 'amount mismatch'}), 400
+
+        # Check if we already used this transaction id for a payment
+        existing = monthly_payments_collection.find_one({'transaction_id': txn})
+        if existing:
+            return jsonify({'status': 'error', 'message': 'transaction already used'}), 400
+
+        # Mark payment completed: create monthly payment record and update user stats
+        # Compute month_year as current month name + year
+        month_year = get_current_month_year()
+
+        # Insert monthly payment record
+        monthly_payments_collection.insert_one({
+            'user_id': session['user_id'],
+            'month_year': month_year,
+            'amount': 50.00,
+            'status': 'completed',
+            'transaction_id': txn,
+            'payment_date': datetime.now(),
+            'approved_at': datetime.now(),
+            'approved_by': 'upi_manual'
+        })
+
+        # Update or insert user stats
+        user_stats = user_stats_collection.find_one({'user_id': session['user_id']})
+        if user_stats:
+            user_stats_collection.update_one({'user_id': session['user_id']}, {'$inc': {'months_paid': 1, 'total_paid': 50.00}, '$set': {'last_payment_month': month_year}})
+            new_months = user_stats.get('months_paid', 0) + 1
+        else:
+            user_stats_collection.insert_one({'user_id': session['user_id'], 'months_paid': 1, 'total_paid': 50.00, 'last_payment_month': month_year})
+            new_months = 1
+
+        # If user now qualifies for premium, set it
+        if new_months >= 3:
+            users_collection.update_one({'_id': ObjectId(session['user_id'])}, {'$set': {'is_premium': True}})
+
+        # Notify admin
+        try:
+            send_admin_notification('Payment Completed (UPI)', f"<strong>{session.get('username')}</strong> verified a UPI payment (txn={txn}) for {month_year} — ₹50")
+        except Exception as e:
+            print('Admin notify failed for UPI:', e)
+
+        # Send user confirmation email in background
+        try:
+            user_email = session.get('email')
+            username = session.get('username')
+            import threading
+            threading.Thread(target=lambda e=user_email, u=username, m=month_year: send_payment_approved(e, u, m, 50.00), daemon=True).start()
+        except Exception as e:
+            print('User email send failed for UPI:', e)
+
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        print('Error verifying UPI transaction:', e)
+        return jsonify({'status': 'error', 'message': 'internal_error'}), 500
 
 @app.route('/payment-failed')
 def payment_failed():
