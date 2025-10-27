@@ -102,8 +102,8 @@
                         <div id="step2" class="pay-step">
                             <div class="num">2</div>
                             <div>
-                                <div class="font-semibold">Tap an app</div>
-                                <div class="text-xs text-blue-200">Use GPay / PhonePe / Paytm buttons below</div>
+                                <div class="font-semibold">Confirm amount</div>
+                                <div class="text-xs text-blue-200">Open your UPI app and scan the QR to pay ₹50</div>
                             </div>
                         </div>
                         <div id="step3" class="pay-step">
@@ -117,16 +117,9 @@
                 </div>
             </div>
 
+            <!-- Removed UPI app buttons: only QR code is used now -->
             <div class="flex items-center justify-center gap-6">
-                <button class="appPayBtn w-14 h-14 rounded-full flex items-center justify-center bg-white/5 shadow-md" onclick="openAppPay('gpay')" aria-label="Pay with Google Pay">
-                    <img src="{{ url_for('static', filename='payment/google-pay-icon.png') }}" alt="GPay" class="w-8 h-8 rounded-full" />
-                </button>
-                <button class="appPayBtn w-14 h-14 rounded-full flex items-center justify-center bg-white/5 shadow-md" onclick="openAppPay('phonepe')" aria-label="Pay with PhonePe">
-                    <img src="{{ url_for('static', filename='payment/phonepe-icon.png') }}" alt="PhonePe" class="w-8 h-8 rounded-full" />
-                </button>
-                <button class="appPayBtn w-14 h-14 rounded-full flex items-center justify-center bg-white/5 shadow-md" onclick="openAppPay('paytm')" aria-label="Pay with Paytm">
-                    <img src="{{ url_for('static', filename='payment/paytm-icon.png') }}" alt="Paytm" class="w-8 h-8 rounded-full" />
-                </button>
+                <!-- space preserved for layout consistency -->
             </div>
 
             <a href="{{ url_for('dashboard') }}" onclick="showDashboardLoading();" class="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 bg-slate-700/50 backdrop-blur-sm border border-blue-400/30 text-blue-200 hover:text-white text-base font-medium leading-normal tracking-[0.015em] no-underline transition-all dashboard-link">
@@ -230,16 +223,14 @@ async function ensureWebhookUp(maxAttempts=5, perAttemptMs=50000){
 
 // On page load, proactively ensure webhook is up before enabling Pay button
 document.addEventListener('DOMContentLoaded', async function(){
-    const appButtons = document.querySelectorAll('.appPayBtn');
-    const copyBtn = document.querySelector('button[onclick="copyUPI()"]');
-    // disable until webhook health-check completes
-    try { appButtons.forEach(b=>b.disabled = true); if(copyBtn) copyBtn.disabled = true; } catch(e){}
+    // Only enable the inline verification input/button once webhook health-check completes
+    const verifyBtn = document.getElementById('verifyInlineBtn');
+    try { if(verifyBtn) verifyBtn.disabled = true; } catch(e){}
     const ok = await ensureWebhookUp(5, 50000);
     if(ok){
-        try { appButtons.forEach(b=>b.disabled = false); if(copyBtn) copyBtn.disabled = false; } catch(e){}
+        try { if(verifyBtn) verifyBtn.disabled = false; } catch(e){}
     } else {
-        // show a non-blocking message and leave pay disabled until user retries via overlay
-        try { appButtons.forEach(b=>b.disabled = true); if(copyBtn) copyBtn.disabled = true; } catch(e){}
+        try { if(verifyBtn) verifyBtn.disabled = true; } catch(e){}
         alert('Payment servers could not be woken automatically. Press Retry in the overlay to try again.');
     }
 

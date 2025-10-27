@@ -127,7 +127,7 @@
             <h3 class="text-lg font-bold text-white mb-4">Make a Payment</h3>
             <p class="text-slate-300 mb-4">Quickly pay ₹50 via your UPI app (Google Pay, PhonePe, etc.). After payment, enter the 12-digit UPI transaction ID to verify.</p>
             <div class="flex gap-3">
-                <a id="gpay-link" href="#" class="flex items-center justify-center gap-2 bg-green-600 text-white font-bold py-2 px-4 rounded-lg no-underline" onclick="openUpiPay(event)">
+                <a id="gpay-link" href="{{ url_for('payment_processing') }}" class="flex items-center justify-center gap-2 bg-green-600 text-white font-bold py-2 px-4 rounded-lg no-underline">
                     <span class="material-symbols-outlined">payment</span>
                     Pay ₹50
                 </a>
@@ -150,18 +150,7 @@
         </div>
 
         <script>
-            function openUpiPay(e){
-                e.preventDefault();
-                // Construct UPI URL
-                const pa = encodeURIComponent('{{ UPI_ID }}');
-                const pn = encodeURIComponent('{{ session.get("username", "WC2026") }}');
-                const am = '50';
-                const cu = 'INR';
-                const tn = encodeURIComponent('WC2026 monthly payment');
-                const upiUrl = `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=${cu}&tn=${tn}`;
-                // Try to open via location.href — mobile will prompt UPI apps
-                window.location.href = upiUrl;
-            }
+            // Note: direct app redirects removed. Users should use the QR on the payment page.
 
             function showTransactionModal(){
                 document.getElementById('transactionModal').classList.remove('hidden');
