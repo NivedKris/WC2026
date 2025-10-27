@@ -66,12 +66,69 @@
             </div>
         </div>
 
-        <div class="mt-8 w-full max-w-sm space-y-3">
-            <button id="upiButton" onclick="initiatePayment()" class="flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl h-14 px-5 bg-green-600 hover:bg-green-700 text-white text-base font-bold leading-normal tracking-[0.015em] transition-all">
-                <span class="material-symbols-outlined">payment</span>
-                <span id="buttonText">Pay ₹50 Now</span>
-            </button>
-            
+        <div class="mt-8 w-full max-w-md space-y-4">
+            <div class="bg-slate-800/70 p-6 rounded-xl flex flex-col items-center">
+                <!-- QR Payment Section -->
+                <img id="qrImage" src="{{ url_for('static', filename='payment/qr.png') }}" alt="UPI QR Code" class="w-48 h-48 rounded-md shadow-md mb-3 object-cover" />
+                <p class="text-blue-200 text-sm mb-3">Scan this QR with any UPI app to send your contribution</p>
+
+                <!-- Manual Verification Section (inline) -->
+                <div class="w-full max-w-sm mt-4">
+                    <div class="text-left text-sm text-blue-200 mb-2">Already paid? Enter your 12-digit UPI transaction ID below 👇</div>
+                    <div class="flex gap-2">
+                        <input id="txnIdInline" type="text" maxlength="20" placeholder="Enter Transaction ID" class="flex-1 p-2 rounded bg-slate-800 text-white" />
+                        <button id="verifyInlineBtn" onclick="verifyTransactionInline()" class="px-4 py-2 rounded bg-primary text-white">Verify</button>
+                    </div>
+                    <div id="txnInlineStatus" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Simple instruction animation: 3 steps -->
+                <div class="mt-4 w-full text-left">
+                    <style>
+                        .pay-steps { display:flex; gap:8px; justify-content:space-between; }
+                        .pay-step { flex:1; background:rgba(255,255,255,0.03); padding:10px; border-radius:8px; color:#cfe8ff; font-size:13px; display:flex; gap:8px; align-items:center; opacity:0; transform:translateY(6px); }
+                        .pay-step .num { background:rgba(255,255,255,0.04); width:28px; height:28px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:#fff; }
+                        @keyframes stepFade { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+                        .pay-step.show { animation: stepFade 420ms ease forwards; }
+                    </style>
+                    <div class="pay-steps">
+                        <div id="step1" class="pay-step">
+                            <div class="num">1</div>
+                            <div>
+                                <div class="font-semibold">Scan QR</div>
+                                <div class="text-xs text-blue-200">Open your UPI app and scan the code</div>
+                            </div>
+                        </div>
+                        <div id="step2" class="pay-step">
+                            <div class="num">2</div>
+                            <div>
+                                <div class="font-semibold">Tap an app</div>
+                                <div class="text-xs text-blue-200">Use GPay / PhonePe / Paytm buttons below</div>
+                            </div>
+                        </div>
+                        <div id="step3" class="pay-step">
+                            <div class="num">3</div>
+                            <div>
+                                <div class="font-semibold">Enter TXN</div>
+                                <div class="text-xs text-blue-200">Paste the 12‑digit transaction id after payment</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-center gap-6">
+                <button class="appPayBtn w-14 h-14 rounded-full flex items-center justify-center bg-white/5 shadow-md" onclick="openAppPay('gpay')" aria-label="Pay with Google Pay">
+                    <img src="{{ url_for('static', filename='payment/google-pay-icon.png') }}" alt="GPay" class="w-8 h-8 rounded-full" />
+                </button>
+                <button class="appPayBtn w-14 h-14 rounded-full flex items-center justify-center bg-white/5 shadow-md" onclick="openAppPay('phonepe')" aria-label="Pay with PhonePe">
+                    <img src="{{ url_for('static', filename='payment/phonepe-icon.png') }}" alt="PhonePe" class="w-8 h-8 rounded-full" />
+                </button>
+                <button class="appPayBtn w-14 h-14 rounded-full flex items-center justify-center bg-white/5 shadow-md" onclick="openAppPay('paytm')" aria-label="Pay with Paytm">
+                    <img src="{{ url_for('static', filename='payment/paytm-icon.png') }}" alt="Paytm" class="w-8 h-8 rounded-full" />
+                </button>
+            </div>
+
             <a href="{{ url_for('dashboard') }}" onclick="showDashboardLoading();" class="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl h-12 px-5 bg-slate-700/50 backdrop-blur-sm border border-blue-400/30 text-blue-200 hover:text-white text-base font-medium leading-normal tracking-[0.015em] no-underline transition-all dashboard-link">
                 <span class="truncate">Cancel</span>
             </a>
@@ -90,7 +147,7 @@
 const currentMonth = "{{ current_month }}";
 
 // Use local server-side wake endpoint so browser doesn't call the external webhook directly
-const PAYMENT_WEBHOOK = '/wake-webhook';
+const PAYMENT_WEBHOOK = '{{ url_for("wake_webhook") }}';
 
 function showWebhookOverlay(msg) {
     // create or reuse an overlay element
@@ -173,19 +230,74 @@ async function ensureWebhookUp(maxAttempts=5, perAttemptMs=50000){
 
 // On page load, proactively ensure webhook is up before enabling Pay button
 document.addEventListener('DOMContentLoaded', async function(){
-    const payBtn = document.getElementById('upiButton');
-    if(!payBtn) return;
+    const appButtons = document.querySelectorAll('.appPayBtn');
+    const copyBtn = document.querySelector('button[onclick="copyUPI()"]');
     // disable until webhook health-check completes
-    try { payBtn.disabled = true; } catch(e){}
+    try { appButtons.forEach(b=>b.disabled = true); if(copyBtn) copyBtn.disabled = true; } catch(e){}
     const ok = await ensureWebhookUp(5, 50000);
     if(ok){
-        try { payBtn.disabled = false; } catch(e){}
+        try { appButtons.forEach(b=>b.disabled = false); if(copyBtn) copyBtn.disabled = false; } catch(e){}
     } else {
         // show a non-blocking message and leave pay disabled until user retries via overlay
-        try { payBtn.disabled = true; } catch(e){}
+        try { appButtons.forEach(b=>b.disabled = true); if(copyBtn) copyBtn.disabled = true; } catch(e){}
         alert('Payment servers could not be woken automatically. Press Retry in the overlay to try again.');
     }
+
+    // Trigger small step animation for payment instructions
+    try{
+        const s1 = document.getElementById('step1');
+        const s2 = document.getElementById('step2');
+        const s3 = document.getElementById('step3');
+        if(s1 && s2 && s3){
+            setTimeout(()=>s1.classList.add('show'), 200);
+            setTimeout(()=>s2.classList.add('show'), 500);
+            setTimeout(()=>s3.classList.add('show'), 800);
+        }
+    }catch(e){}
 });
+
+// New helpers for QR + app button flow
+function getUPIParams(){
+    const pa = '{{ UPI_ID }}';
+    const pn = '{{ session.get("username", "WC2026") }}';
+    const am = '50';
+    const cu = 'INR';
+    const tn = 'WC2026 monthly payment for ' + currentMonth;
+    return { pa, pn, am, cu, tn };
+}
+
+function buildUPIUrl(scheme, params){
+    // scheme examples: 'upi://pay', 'tez://upi/pay', 'phonepe://pay', 'paytmmp://pay'
+    const pa = encodeURIComponent(params.pa);
+    const pn = encodeURIComponent(params.pn);
+    const am = encodeURIComponent(params.am);
+    const cu = encodeURIComponent(params.cu);
+    const tn = encodeURIComponent(params.tn);
+    return `${scheme}?pa=${pa}&pn=${pn}&am=${am}&cu=${cu}&tn=${tn}`;
+}
+
+async function openAppPay(app){
+    // ensure webhook awake before attempting to open app
+    const ok = await ensureWebhookUp(6, 50000);
+    if(!ok){ alert('Payment servers unreachable. Please try again later.'); return; }
+    const params = getUPIParams();
+    let url = '';
+    if(app === 'gpay'){
+        url = buildUPIUrl('tez://upi/pay', params);
+    } else if(app === 'phonepe'){
+        url = buildUPIUrl('phonepe://pay', params);
+    } else if(app === 'paytm'){
+        url = buildUPIUrl('paytmmp://pay', params);
+    }
+    try{ window.location.href = url; } catch(e){ alert('Open your UPI app and pay to ' + params.pa); }
+    // After opening app, focus the inline TXN input so users can paste the id when they return
+    setTimeout(()=>{ try{ const inp = document.getElementById('txnIdInline'); if(inp){ inp.focus(); inp.scrollIntoView({behavior:'smooth', block:'center'}); } }catch(e){} }, 700);
+}
+
+function copyUPI(){
+    const upi = '{{ UPI_ID }}';
+    navigator.clipboard.writeText(upi).then(()=>{ alert('UPI ID copied to clipboard: ' + upi); }).catch(()=>{ prompt('Copy this UPI ID', upi); });
+}
 
 async function initiatePayment(){
     const button = document.getElementById('upiButton');
@@ -237,21 +349,14 @@ async function initiatePayment(){
     }
 }
 
-function showTransactionModal(){
-    const modal = document.getElementById('transactionModal');
-    if(modal) modal.classList.remove('hidden');
-}
-
-function closeTransactionModal(){
-    const modal = document.getElementById('transactionModal');
-    if(modal) modal.classList.add('hidden');
-}
-
-async function verifyTransaction(){
-    const txnId = document.getElementById('txnIdInput').value.trim();
-    const statusEl = document.getElementById('txnStatus');
-    if(!txnId){ statusEl.innerText = 'Please enter transaction id'; return; }
-    const btn = document.getElementById('verifyTxnBtn');
+// Inline verification (used in the new layout)
+async function verifyTransactionInline(){
+    const txnInput = document.getElementById('txnIdInline');
+    const statusEl = document.getElementById('txnInlineStatus');
+    if(!txnInput) return;
+    const txnId = txnInput.value.trim();
+    if(!txnId){ statusEl.innerHTML = '<span class="text-red-400">Please enter transaction id</span>'; return; }
+    const btn = document.getElementById('verifyInlineBtn');
     btn.disabled = true; btn.innerText = 'Verifying...';
     try{
         const resp = await fetch('{{ url_for("verify_upi_transaction") }}', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ transaction_id: txnId }) });
@@ -268,17 +373,5 @@ async function verifyTransaction(){
 }
 </script>
 
-<!-- Reuse transaction modal from user_profile (if present globally) or render one here -->
-<div id="transactionModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
-    <div class="bg-background-light dark:bg-background-dark rounded-xl p-6 w-full max-w-md">
-        <h4 class="text-lg font-bold text-white mb-2">Enter Transaction ID</h4>
-        <p class="text-slate-300 text-sm mb-4">Please enter the 12-digit UPI transaction ID you received after payment.</p>
-        <input id="txnIdInput" type="text" maxlength="20" placeholder="Transaction ID" class="w-full p-2 rounded-md bg-slate-800 text-white mb-3" />
-        <div class="flex justify-end gap-2">
-            <button onclick="closeTransactionModal()" class="px-4 py-2 rounded bg-gray-300">Cancel</button>
-            <button onclick="verifyTransaction()" id="verifyTxnBtn" class="px-4 py-2 rounded bg-primary text-white">Verify</button>
-        </div>
-        <div id="txnStatus" class="mt-3 text-sm"></div>
-    </div>
-</div>
+<!-- Inline verification replaces the modal -- kept removed -->
 {% endblock %}

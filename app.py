@@ -88,6 +88,25 @@ user_stats_collection = db['user_stats']
 winner_claims_collection = db['winner_claims']
 app_settings_collection = db['app_settings']
 
+
+@app.route('/wake-webhook', methods=['GET'])
+def wake_webhook():
+    """Server-side wake endpoint: performs a simple GET to the configured
+    external webhook and returns a JSON summary. Uses a 50s timeout to allow
+    cold-starts on the external service.
+    """
+    webhook = os.getenv('PAYMENT_WEBHOOK_URL', 'https://sms-webhook-9l8c.onrender.com')
+    try:
+        resp = requests.get(webhook, timeout=50)
+        # Try to parse JSON body if present
+        try:
+            body = resp.json()
+        except Exception:
+            body = resp.text[:1000]
+        return jsonify({'ok': resp.status_code == 200, 'status': resp.status_code, 'body': body}), resp.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+
 # Razorpay is deprecated in this deployment; keep placeholders in env for compatibility but do not initialize client
 try:
     import razorpay  # optional dependency
@@ -457,26 +476,6 @@ def terms():
 @app.route('/refund-policy')
 def refund_policy():
     return render_template('refund_policy.html')
-
-
-@app.route('/wake-webhook', methods=['GET'])
-def wake_webhook():
-    """Server-side helper that performs a simple GET to the external webhook and
-    returns a JSON summary. This avoids CORS issues and behaves like a curl call
-    with a 50-second timeout per attempt.
-    """
-    webhook = os.getenv('PAYMENT_WEBHOOK_URL', 'https://sms-webhook-9l8c.onrender.com')
-    try:
-        # Use requests with a long timeout to allow remote cold starts
-        resp = requests.get(webhook, timeout=50)
-        try:
-            body = resp.text
-        except Exception:
-            body = ''
-        return jsonify({'ok': resp.status_code == 200, 'status': resp.status_code, 'body': body}), resp.status_code
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 504
-
 
 @app.route('/shipping-policy')
 def shipping_policy():
