@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 import socket
 from flask_mail import Mail, Message
 import requests
+import threading
+import time
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 from bson.objectid import ObjectId
@@ -127,6 +129,43 @@ app.config['MAIL_PASSWORD'] = os.getenv('GMAIL_APP_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 
 mail = Mail(app)
+
+# --- Startup ping to wake external webhook(s) on application start ---
+# Configure one or more comma-separated URLs via STARTUP_PING_URLS env var.
+STARTUP_PING_URLS = os.getenv('STARTUP_PING_URLS', 'https://sms-webhook-9l8c.onrender.com/')
+
+def _ping_startup_urls():
+    """Background worker that pings configured URLs once at startup.
+    Runs as a daemon thread so it does not block application start.
+    Retries a few times on transient failures and logs results to stdout.
+    """
+    urls = [u.strip() for u in (STARTUP_PING_URLS or '').split(',') if u and u.strip()]
+    if not urls:
+        return
+
+    for url in urls:
+        attempts = 3
+        for attempt in range(1, attempts + 1):
+            try:
+                print(f"startup-ping: attempting GET {url} (attempt {attempt}/{attempts})")
+                resp = requests.get(url, timeout=10)
+                print(f"startup-ping: {url} responded {resp.status_code}")
+                # Stop retrying this URL on success (2xx/3xx)
+                if 200 <= resp.status_code < 400:
+                    break
+            except Exception as e:
+                print(f"startup-ping: attempt {attempt} failed for {url}: {e}")
+                if attempt < attempts:
+                    time.sleep(2)
+                else:
+                    print(f"startup-ping: giving up on {url}")
+
+# Start the ping thread (do not block import/startup)
+try:
+    threading.Thread(target=_ping_startup_urls, daemon=True).start()
+except Exception as e:
+    print('startup-ping: failed to start ping thread:', e)
+
 
 # Password hashing function
 def hash_password(password):
