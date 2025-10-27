@@ -1,0 +1,37 @@
+
+{% extends "base.html" %}
+
+{% block title %}Refund & Cancellation Policy — WC 2026{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center py-12 px-4">
+  <div class="w-full max-w-3xl bg-white/5 backdrop-blur-sm rounded-xl p-8 shadow-lg">
+    <div class="flex items-center gap-4 mb-6 justify-between">
+      <div class="flex items-center gap-4">
+        <button type="button" onclick="history.back()" aria-label="Go back" class="text-slate-300 hover:text-white p-2 rounded-md">
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-12 h-12 rounded-full p-1 bg-white">
+        <div>
+          <h1 class="text-white text-4xl font-extrabold leading-tight">3. Refund & Cancellation Policy</h1>
+          <p class="text-slate-300 mt-2 italic">Refund & Cancellation Policy — WC 2026</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="prose prose-invert max-w-none text-slate-300 space-y-4">
+      <p>At WC 2026, every contribution helps us create community-based World Cup experiences — such as local fan zones, screening events, and decorations.</p>
+
+      <p>Since funds are used to plan and organize group activities, payments are generally non-refundable. However, we do consider refund requests under certain conditions:</p>
+      <ul class="mt-2 space-y-1">
+        <li>Duplicate payments made accidentally</li>
+        <li>Incorrect payment amount due to technical errors</li>
+      </ul>
+
+      <p>If you wish to request a refund, please email us at <a class="text-primary" href="mailto:mark.organisation@gmail.com">mark.organisation@gmail.com</a> within 3 days of your transaction. Our team will review your request and respond within 5–7 business days.</p>
+
+      <p>Please note that contributions are voluntary and not linked to any betting, prize, or profit. Funds are solely used for fan engagement and event expenses.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -392,6 +392,66 @@ def send_admin_notification(subject, body):
         print('Could not start admin notify thread, sending synchronously:', e)
         return _send_sync()
 
+
+# Informational pages and contact form
+@app.route('/contact', methods=['GET', 'POST'])
+def contact():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        message = request.form.get('message')
+
+        subject = f"Contact Form Message from {name or email}"
+        html = f"""
+        <p><strong>From:</strong> {name or 'N/A'} &lt;{email or 'N/A'}&gt;</p>
+        <p><strong>Message:</strong></p>
+        <div>{(message or '').replace('\n','<br/>')}</div>
+        """
+
+        # Notify admin (non-blocking)
+        try:
+            send_admin_notification(subject, html)
+        except Exception as e:
+            print('contact: admin notify failed', e)
+
+        # Send confirmation to user (non-blocking) with WC 2026 wording
+        try:
+            import threading
+            def _send_user_confirm():
+                try:
+                    subject = 'Message received — WC 2026'
+                    html = f"""
+                    <p>Hi {name or ''},</p>
+                    <p>Thanks for contacting WC 2026. We have received your message and will respond within 2–3 working days.</p>
+                    <p>If your message is about a payment issue, please include your transaction reference so we can investigate quickly.</p>
+                    <p>Best regards,<br><strong>WC 2026 Team</strong></p>
+                    """
+                    send_email(subject, [email], html)
+                except Exception as e:
+                    print('contact: user confirmation failed', e)
+            threading.Thread(target=_send_user_confirm, daemon=True).start()
+        except Exception as e:
+            print('contact: could not spawn confirmation thread', e)
+
+        return render_template('contact.html', success='Your message was sent. We will respond shortly.')
+
+    return render_template('contact.html')
+
+
+@app.route('/terms')
+def terms():
+    return render_template('terms.html')
+
+
+@app.route('/refund-policy')
+def refund_policy():
+    return render_template('refund_policy.html')
+
+
+@app.route('/shipping-policy')
+def shipping_policy():
+    return render_template('shipping_policy.html')
+
 def send_winner_announcement_to_winners(winning_nation):
     """Send email to all users who supported the winning nation"""
     winners = list(users_collection.find(

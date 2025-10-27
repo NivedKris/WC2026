@@ -480,8 +480,14 @@
     
     <!-- Footer -->
     <div class="footer-branding mt-8 pt-4 border-t border-slate-700">
-    <img src="https://cdn.jsdelivr.net/gh/NivedKris/WC2026@main/static/company/mark.png" onerror="this.onerror=null;this.src='{{ url_for('static', filename='company/mark.png') }}'" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
+    <img src="https://cdn.jsdelivr.net/gh/NivedKris/WC2026@main/static/company/mark.png" data-local-src="{{ url_for('static', filename='company/mark.png') }}" onerror="this.onerror=null;this.src=this.getAttribute('data-local-src')" alt="MARK.ORG" class="w-10 h-10 rounded-full mx-auto mb-2 object-cover bg-white p-1 shadow-md opacity-90">
         <p class="text-slate-500 text-xs">Built by <span class="text-primary">MARK.ORG</span> | © 2025 WC 2026</p>
+        <div class="mt-2 flex justify-center gap-3 text-xs">
+            <a href="{{ url_for('contact') }}" class="text-slate-400 hover:text-white">Contact</a>
+            <a href="{{ url_for('terms') }}" class="text-slate-400 hover:text-white">Terms</a>
+            <a href="{{ url_for('refund_policy') }}" class="text-slate-400 hover:text-white">Refunds</a>
+            <a href="{{ url_for('shipping_policy') }}" class="text-slate-400 hover:text-white">Shipping</a>
+        </div>
     </div>
     </div> <!-- Close content layer -->
 </div> <!-- Close main container -->

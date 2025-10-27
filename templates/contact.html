@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Contact Us — WC 2026 Support{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center py-12 px-4">
+  <div class="w-full max-w-3xl bg-white/5 backdrop-blur-sm rounded-xl p-8 shadow-lg">
+    <div class="flex items-center gap-4 mb-6 justify-between">
+      <div class="flex items-center gap-4">
+        <button type="button" onclick="history.back()" aria-label="Go back" class="text-slate-300 hover:text-white p-2 rounded-md">
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-12 h-12 rounded-full p-1 bg-white">
+        <div>
+          <h1 class="text-white text-4xl font-extrabold leading-tight">1. Contact Us</h1>
+          <p class="text-slate-300 mt-2 italic">Contact Us — WC 2026 Support</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="prose prose-invert max-w-none text-slate-300 mb-8 space-y-4">
+      <p class="text-lg">We’re always happy to hear from our supporters. If you have questions about payments, your account, or how funds are used, reach out and we'll assist.</p>
+
+      <p><strong>Email:</strong> <a class="text-primary" href="mailto:mark.organisation@gmail.com">mark.organisation@gmail.com</a></p>
+      <p><strong>Response time:</strong> Within 2–3 working days</p>
+
+      <h2 class="text-white mt-4">What we can help with</h2>
+      <ul class="mt-2 space-y-1">
+        <li>Payment or transaction clarifications</li>
+        <li>Account or login issues</li>
+        <li>General queries about events and supporter programs</li>
+      </ul>
+
+      <p class="mt-4"><em>WC 2026 is a fan-driven initiative to support community World Cup events (projectors, screening sessions, decorations). We do not promote betting or wagering activities.</em></p>
+    </div>
+
+    {% if success %}
+      <div class="bg-green-800/60 border border-green-600 text-green-100 p-4 rounded-md mb-6">
+        <strong>Message sent.</strong> Thank you — we have received your message and will get back to you within 2–3 working days.
+      </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('contact') }}" class="space-y-4 bg-slate-900/30 p-4 rounded-lg">
+      <div>
+        <label class="text-slate-200 text-sm">Your name</label>
+        <input name="name" class="w-full mt-1 rounded-md p-2 bg-slate-800 text-white" required />
+      </div>
+      <div>
+        <label class="text-slate-200 text-sm">Email</label>
+        <input name="email" type="email" class="w-full mt-1 rounded-md p-2 bg-slate-800 text-white" required />
+      </div>
+      <div>
+        <label class="text-slate-200 text-sm">Message</label>
+        <textarea name="message" rows="5" class="w-full mt-1 rounded-md p-2 bg-slate-800 text-white" required></textarea>
+      </div>
+      <div class="text-right">
+        <button type="submit" class="bg-primary text-white px-4 py-2 rounded-md font-bold">Send Message</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

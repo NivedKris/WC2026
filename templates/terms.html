@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Terms & Conditions — WC 2026{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center py-12 px-4">
+  <div class="w-full max-w-4xl bg-white/5 backdrop-blur-sm rounded-xl p-8 shadow-lg">
+    <div class="flex items-center gap-4 mb-6 justify-between">
+      <div class="flex items-center gap-4">
+        <button type="button" onclick="history.back()" aria-label="Go back" class="text-slate-300 hover:text-white p-2 rounded-md">
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <img src="{{ url_for('static', filename='company/mark.png') }}" alt="MARK.ORG" class="w-12 h-12 rounded-full p-1 bg-white">
+        <div>
+          <h1 class="text-white text-4xl font-extrabold leading-tight">2. Terms & Conditions</h1>
+          <p class="text-slate-300 mt-2 italic">Terms & Conditions — WC 2026</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="prose prose-invert max-w-none text-slate-300 space-y-6">
+      <p class="text-lg">Welcome to WC 2026. By accessing or contributing through our website, you agree to the terms below.</p>
+
+      <h2 class="text-white mt-4">Purpose</h2>
+      <p>WC 2026 exists to bring fans together and raise small monthly contributions to organize football-themed activities such as screenings, decorations, and community gatherings. This is not a betting, gambling, or investment platform.</p>
+
+      <h2 class="text-white mt-4">User Conduct</h2>
+      <p>Users must engage respectfully. Misuse or attempts to disrupt the platform may result in account removal.</p>
+
+      <h2 class="text-white mt-4">Payments</h2>
+      <p>All contributions are voluntary and handled through secure payment gateways. Payments are made solely to support fan events.</p>
+
+      <h2 class="text-white mt-4">Refunds</h2>
+      <p>Contributions are generally non-refundable. Exceptions may be made for duplicate or accidental payments (see Refund & Cancellation Policy).</p>
+
+      <h2 class="text-white mt-4">Privacy</h2>
+      <p>We collect only basic details (like your name and email) to maintain your supporter record. We do not sell or misuse your data.</p>
+
+      <h2 class="text-white mt-4">Updates</h2>
+      <p>WC 2026 may update these terms at any time to stay compliant with applicable laws.</p>
+
+      <p>By contributing, you confirm that you’re participating to support community celebrations and not for any financial or wagering return.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
