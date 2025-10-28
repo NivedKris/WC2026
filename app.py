@@ -889,7 +889,8 @@ def get_current_month_year():
     return datetime.now().strftime("%B %Y")
 
 def get_months_until_world_cup():
-    world_cup_date = datetime(2026, 7, 19)
+    # World Cup start date changed to June 11, 2026
+    world_cup_date = datetime(2026, 6, 11)
     current_date = datetime.now()
     months = []
     
@@ -1262,11 +1263,19 @@ def dashboard():
             {'$match': {'nation': {'$ne': None}}},
             {'$project': {'username': 1, 'nation': 1, 'avatar_url': 1}},
             {'$addFields': {'_id_str': {'$toString': '$_id'}}},
+            # Lookup user_stats matching either the stringified _id or the ObjectId form
             {'$lookup': {
                 'from': 'user_stats',
-                'let': {'uid': '$_id_str'},
+                'let': {'uid_str': '$_id_str', 'uid_obj': '$_id'},
                 'pipeline': [
-                    {'$match': {'$expr': {'$eq': ['$user_id', '$$uid']}}},
+                    {'$match': {
+                        '$expr': {
+                            '$or': [
+                                {'$eq': ['$user_id', '$$uid_str']},
+                                {'$eq': ['$user_id', {'$toString': '$$uid_obj'}]}
+                            ]
+                        }
+                    }},
                     {'$project': {'months_paid': 1, 'total_paid': 1, '_id': 0}}
                 ],
                 'as': 'stats'
@@ -1276,7 +1285,26 @@ def dashboard():
                 'months_paid': {'$ifNull': ['$stats.months_paid', 0]},
                 'total_paid': {'$ifNull': ['$stats.total_paid', 0]}
             }},
-            {'$sort': {'months_paid': -1, 'total_paid': -1}},
+            # Deduplicate users: if multiple stats entries exist for same user, group by _id
+            # If multiple stats documents matched (rare), take the max values to dedupe
+            {'$group': {
+                '_id': '$_id',
+                'username': {'$first': '$username'},
+                'nation': {'$first': '$nation'},
+                'avatar_url': {'$first': '$avatar_url'},
+                'months_paid': {'$max': '$months_paid'},
+                'total_paid': {'$max': '$total_paid'}
+            }},
+            # Re-format documents (bring _id back as ObjectId string if needed)
+            {'$project': {
+                'username': 1,
+                'nation': 1,
+                'avatar_url': 1,
+                'months_paid': 1,
+                'total_paid': 1
+            }},
+            # Stable sort: add _id as a tie-breaker to make pagination deterministic
+            {'$sort': {'months_paid': -1, 'total_paid': -1, '_id': 1}},
             {'$skip': start_idx},
             {'$limit': PAGE_SIZE}
         ]
@@ -1402,9 +1430,16 @@ def api_supporters():
             {'$addFields': {'_id_str': {'$toString': '$_id'}}},
             {'$lookup': {
                 'from': 'user_stats',
-                'let': {'uid': '$_id_str'},
+                'let': {'uid_str': '$_id_str', 'uid_obj': '$_id'},
                 'pipeline': [
-                    {'$match': {'$expr': {'$eq': ['$user_id', '$$uid']}}},
+                    {'$match': {
+                        '$expr': {
+                            '$or': [
+                                {'$eq': ['$user_id', '$$uid_str']},
+                                {'$eq': ['$user_id', {'$toString': '$$uid_obj'}]}
+                            ]
+                        }
+                    }},
                     {'$project': {'months_paid': 1, 'total_paid': 1, '_id': 0}}
                 ],
                 'as': 'stats'
@@ -1414,7 +1449,24 @@ def api_supporters():
                 'months_paid': {'$ifNull': ['$stats.months_paid', 0]},
                 'total_paid': {'$ifNull': ['$stats.total_paid', 0]}
             }},
-            {'$sort': {'months_paid': -1, 'total_paid': -1}},
+            # Deduplicate in case multiple user_stats docs exist for same user
+            {'$group': {
+                '_id': '$_id',
+                'username': {'$first': '$username'},
+                'nation': {'$first': '$nation'},
+                'avatar_url': {'$first': '$avatar_url'},
+                'months_paid': {'$max': '$months_paid'},
+                'total_paid': {'$max': '$total_paid'}
+            }},
+            {'$project': {
+                'username': 1,
+                'nation': 1,
+                'avatar_url': 1,
+                'months_paid': 1,
+                'total_paid': 1
+            }},
+            # Stable sort: add _id as a tie-breaker to make pagination deterministic
+            {'$sort': {'months_paid': -1, 'total_paid': -1, '_id': 1}},
             {'$skip': start_idx},
             {'$limit': PAGE_SIZE}
         ]
@@ -1479,6 +1531,64 @@ def api_supporters():
             'total_pages': total_pages,
             'index_start': start_idx
         })
+
+
+@app.route('/admin/debug-supporters')
+def admin_debug_supporters():
+    """Admin-only diagnostic: returns counts and inconsistent records that can
+    cause duplicates or missing supporters in the leaderboard.
+    """
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'status': 'error', 'message': 'unauthorized'}), 403
+
+    # Total users who selected a nation
+    total_users_with_nation = users_collection.count_documents({'nation': {'$ne': None}})
+
+    # Total user_stats docs
+    total_user_stats = user_stats_collection.count_documents({})
+
+    # Find user_id values in user_stats that appear multiple times
+    dup_pipeline = [
+        {'$group': {'_id': '$user_id', 'count': {'$sum': 1}}},
+        {'$match': {'count': {'$gt': 1}}},
+        {'$project': {'user_id': '$_id', 'count': 1, '_id': 0}}
+    ]
+    duplicated_stats = list(user_stats_collection.aggregate(dup_pipeline))
+
+    # user_stats that don't have a matching users document
+    orphan_pipeline = [
+        {'$project': {'user_id': 1}},
+    ]
+    orphaned = []
+    for doc in user_stats_collection.find({}, {'user_id': 1}):
+        uid = doc.get('user_id')
+        if not uid:
+            orphaned.append({'user_id': uid})
+            continue
+        # try both ObjectId and string match
+        try:
+            if not users_collection.find_one({'_id': ObjectId(uid)}):
+                if not users_collection.find_one({'_id': uid}):
+                    orphaned.append({'user_id': uid})
+        except Exception:
+            if not users_collection.find_one({'_id': uid}):
+                orphaned.append({'user_id': uid})
+
+    # Users with nation but no user_stats
+    users_missing_stats = []
+    for user in users_collection.find({'nation': {'$ne': None}}, {'_id': 1, 'username': 1}):
+        uid = str(user['_id'])
+        if not user_stats_collection.find_one({'user_id': uid}):
+            users_missing_stats.append({'user_id': uid, 'username': user.get('username')})
+
+    return jsonify({
+        'status': 'ok',
+        'total_users_with_nation': total_users_with_nation,
+        'total_user_stats': total_user_stats,
+        'duplicated_user_stats': duplicated_stats,
+        'orphaned_user_stats': orphaned,
+        'users_missing_stats': users_missing_stats[:200]
+    })
 @app.route('/pay-monthly')
 def pay_monthly():
     if 'user_id' not in session:
