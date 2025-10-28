@@ -455,21 +455,38 @@
         </div>
     </div>
     
-    <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-4">Top Supporters</h3>
-    
-    <div class="flex flex-col gap-2 px-4 py-3">
+    <div class="flex items-center justify-between px-4 pb-2 pt-4">
+        <h3 class="text-black dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">Top Supporters</h3>
+        <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                {% set start_display = index_start + 1 if total_supporters > 0 else 0 %}
+                {% set end_display = index_start + (leaderboard|length) %}
+                <div id="supporters-range" class="hidden sm:block">Showing {{ start_display }}–{{ end_display }} of {{ total_supporters }}</div>
+                <button type="button" id="supporters-prev" class="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700" aria-label="Previous" {% if supporters_page <= 1 %}disabled style="opacity:0.4;pointer-events:none;"{% endif %} data-page="{{ supporters_page-1 if supporters_page>1 else 1 }}">
+                    <span class="material-symbols-outlined">chevron_left</span>
+                </button>
+                <div id="supporters-page-info" class="px-2">Page {{ supporters_page }} / {{ total_pages }}</div>
+                <button type="button" id="supporters-next" class="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700" aria-label="Next" {% if supporters_page >= total_pages %}disabled style="opacity:0.4;pointer-events:none;"{% endif %} data-page="{{ supporters_page+1 if supporters_page<total_pages else total_pages }}">
+                    <span class="material-symbols-outlined">chevron_right</span>
+                </button>
+                <div id="supporters-spinner" style="display:none; margin-left:8px;">
+                    <svg class="animate-spin h-5 w-5 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
+                </div>
+            </div>
+    </div>
+
+    <div class="flex flex-col gap-2 px-4 py-3" id="leaderboard-container">
         {% for user in leaderboard %}
-        <div class="flex items-center {% if user[3] >= 3 %}bg-yellow-100 dark:bg-yellow-900/20{% else %}bg-zinc-200 dark:bg-zinc-800{% endif %} p-3 rounded-lg">
-            <div class="w-8 text-center text-black dark:text-white font-bold">{{ loop.index }}</div>
+            <div class="leaderboard-row flex items-center {% if user[3] >= 3 %}bg-yellow-100 dark:bg-yellow-900/20{% else %}bg-primary/10 dark:bg-zinc-800{% endif %} p-3 rounded-lg" data-idx="{{ index_start + loop.index }}">
+            <div class="w-8 text-center text-white font-bold">{{ index_start + loop.index }}</div>
             <div class="flex-1 flex items-center gap-3 ml-3">
                 {{ avatar_img(user[2] or 'avatar1.png', alt=user[0], classes='w-8 h-8 rounded-full object-cover') }}
-                <span class="text-black dark:text-white">{{ user[0] }}</span>
+                <span class="text-white">{{ user[0] }}</span>
             </div>
             <div class="flex items-center gap-2">
-                <span class="text-black dark:text-white text-sm">{{ user[1] }}</span>
+                <span class="text-white text-sm">{{ user[1] }}</span>
             </div>
             <div class="w-20 text-right">
-                <span class="text-black dark:text-white text-sm font-bold">{{ user[3] }} months</span>
+                <span class="text-white text-sm font-bold">{{ user[3] }} months</span>
                 {% if user[3] >= 3 %}
                 <span class="bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded-full block mt-1">Premium</span>
                 {% endif %}
@@ -554,6 +571,174 @@ setInterval(() => {
 <!-- Countdown Timer Script (Only for normal dashboard) -->
 {% if not winning_nation %}
 <script>
+// Supporters AJAX pagination with sessionStorage caching and loading animation
+(function(){
+    const prevBtn = document.getElementById('supporters-prev');
+    const nextBtn = document.getElementById('supporters-next');
+    const pageInfo = document.getElementById('supporters-page-info');
+    const rangeInfo = document.getElementById('supporters-range');
+    const spinner = document.getElementById('supporters-spinner');
+    const container = document.getElementById('leaderboard-container');
+
+    if(!container) return; // nothing to do
+
+    // Make sure buttons are clickable (we'll control visual disabled state).
+    if(prevBtn) prevBtn.removeAttribute('disabled');
+    if(nextBtn) nextBtn.removeAttribute('disabled');
+
+    console.log && console.log('[supporters] init');
+
+    // Attach very defensive click handlers first so clicks are recorded even if later code errors.
+    function safeClickHandler(e){
+        try{
+            e && e.preventDefault && e.preventDefault();
+            const el = e.currentTarget || e.target;
+            const page = Number(el && el.dataset && el.dataset.page) || 1;
+            console.log && console.log('[supporters] click', {page, dataset: el && el.dataset});
+            // ensure pointer-events is enabled so click can go through
+            if(el && el.style) el.style.pointerEvents = '';
+            // call the normal loader
+            loadPage(page);
+        }catch(err){
+            console.error('supporters click handler error', err);
+        }
+    }
+    if(prevBtn) prevBtn.addEventListener('click', safeClickHandler);
+    if(nextBtn) nextBtn.addEventListener('click', safeClickHandler);
+
+    function renderEntries(data){
+        // fade out old
+        container.style.opacity = 0.3;
+        setTimeout(()=>{
+            container.innerHTML = '';
+            const start = data.index_start;
+            data.entries.forEach((u, i)=>{
+                const idx = start + i + 1;
+                const row = document.createElement('div');
+                row.className = 'leaderboard-row flex items-center p-3 rounded-lg';
+                if(u.months_paid >= 3) row.classList.add('bg-yellow-100'); else row.classList.add('bg-primary/10');
+                row.setAttribute('data-idx', idx);
+                row.innerHTML = `
+                <div class="w-8 text-center text-white font-bold">${idx}</div>
+                <div class="flex-1 flex items-center gap-3 ml-3">
+                    <img src="/static/avatars/${u.avatar_url}" onerror="this.onerror=null;this.src='/static/avatars/${u.avatar_url}';" class="w-8 h-8 rounded-full object-cover" alt="${u.username}">
+                    <span class="font-medium text-white">${u.username}</span>
+                </div>
+                <div class="flex items-center gap-2"><span class="text-white text-sm">${u.nation}</span></div>
+                <div class="w-20 text-right"><span class="text-white text-sm font-bold">${u.months_paid} months</span>${u.months_paid>=3?'<div class="mt-1 text-xs font-bold bg-yellow-500 text-black px-2 py-1 rounded-full inline-block">Premium</div>':''}</div>
+                `;
+                container.appendChild(row);
+            });
+            container.style.transition = 'opacity 250ms ease';
+            container.style.opacity = 1;
+        }, 150);
+    }
+
+    function setButtonsState(page, total_pages){
+        if(prevBtn){
+            prevBtn.dataset.page = String(Math.max(1, page - 1));
+            const disablePrev = page <= 1;
+            // keep button enabled in DOM so clicks are always received; use aria-disabled + styles for UX
+            prevBtn.disabled = false;
+            prevBtn.setAttribute('aria-disabled', String(disablePrev));
+            if(!disablePrev){
+                prevBtn.style.opacity = '';
+                prevBtn.style.pointerEvents = '';
+            } else {
+                prevBtn.style.opacity = '0.4';
+                prevBtn.style.pointerEvents = 'none';
+            }
+        }
+        if(nextBtn){
+            nextBtn.dataset.page = String(Math.min(total_pages, page + 1));
+            const disableNext = page >= total_pages;
+            nextBtn.disabled = false;
+            nextBtn.setAttribute('aria-disabled', String(disableNext));
+            if(!disableNext){
+                nextBtn.style.opacity = '';
+                nextBtn.style.pointerEvents = '';
+            } else {
+                nextBtn.style.opacity = '0.4';
+                nextBtn.style.pointerEvents = 'none';
+            }
+        }
+    }
+
+    async function loadPage(page){
+        page = Number(page) || 1;
+
+        // disable while loading
+        if(prevBtn) prevBtn.disabled = true;
+        if(nextBtn) nextBtn.disabled = true;
+
+        const cacheKey = `supporters_page_${page}`;
+        const cached = sessionStorage.getItem(cacheKey);
+        if(cached){
+            try{
+                const data = JSON.parse(cached);
+                renderEntries(data);
+                pageInfo && (pageInfo.textContent = `Page ${data.page} / ${data.total_pages}`);
+                rangeInfo && (rangeInfo.textContent = `Showing ${data.index_start+1}–${Math.min(data.index_start + data.entries.length, data.total_supporters)} of ${data.total_supporters}`);
+                setButtonsState(data.page, data.total_pages);
+            }catch(e){ console.error('Invalid cached supporters page', e); }
+            return;
+        }
+
+        // show spinner
+        spinner && (spinner.style.display = 'inline-block');
+        try{
+            const resp = await fetch(`/api/supporters?page=${page}`, {credentials: 'same-origin'});
+            if(!resp.ok) throw new Error('Network error');
+            const data = await resp.json();
+            if(data.status !== 'ok') throw new Error(data.message || 'API error');
+
+            // cache for session
+            sessionStorage.setItem(`supporters_page_${page}`, JSON.stringify(data));
+            renderEntries(data);
+            pageInfo && (pageInfo.textContent = `Page ${data.page} / ${data.total_pages}`);
+            rangeInfo && (rangeInfo.textContent = `Showing ${data.index_start+1}–${Math.min(data.index_start + data.entries.length, data.total_supporters)} of ${data.total_supporters}`);
+
+            setButtonsState(data.page, data.total_pages);
+        }catch(err){
+            console.error('Failed to load supporters page', err);
+        }finally{
+            spinner && (spinner.style.display = 'none');
+        }
+    }
+
+    // Note: safeClickHandler was attached earlier to handle pager clicks and logging.
+
+    // Prefetch next page in background when user idle
+    let idleTimer = null;
+    function prefetchNext(){
+        try{
+            const next = Number(nextBtn && nextBtn.dataset.page) || 1;
+            if(!sessionStorage.getItem(`supporters_page_${next}`)){
+                fetch(`/api/supporters?page=${next}`, {credentials: 'same-origin'})
+                    .then(r=>r.json())
+                    .then(d=>{ if(d && d.status==='ok') sessionStorage.setItem(`supporters_page_${d.page}`, JSON.stringify(d)); })
+                    .catch(()=>{});
+            }
+        }catch(e){}
+    }
+
+    document.addEventListener('mousemove', ()=>{ clearTimeout(idleTimer); idleTimer = setTimeout(prefetchNext, 1500); });
+
+    // Load the current page (use page shown in page-info if available)
+    (function initLoad(){
+        let initial = 1;
+        try{
+            // prefer page number from the page-info text 'Page X / Y'
+            if(pageInfo){
+                const m = pageInfo.textContent && pageInfo.textContent.match(/Page\s+(\d+)/i);
+                if(m) initial = Number(m[1]) || 1;
+            }
+            loadPage(initial);
+        }catch(e){}
+    })();
+
+})();
+
 // Live countdown timer
 function updateCountdown() {
     const worldCupDate = new Date('2026-07-19T00:00:00').getTime();

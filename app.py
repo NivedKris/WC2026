@@ -869,6 +869,22 @@ def init_db():
             'declared_by': None
         })
 
+    # Sanitize existing avatar_url values: replace any that look like full external
+    # URLs (for example Google profile picture URLs) with a random local avatar
+    # filename so templates that concatenate `/static/avatars/` will not produce
+    # invalid paths like `/static/avatars/https://...`.
+    try:
+        import random, re
+        # Find users whose avatar_url starts with http:// or https://
+        users_cursor = users_collection.find({'avatar_url': {'$regex': '^https?://'}})
+        for u in users_cursor:
+            new_avatar = f"avatar{random.randint(1,25)}.png"
+            users_collection.update_one({'_id': u['_id']}, {'$set': {'avatar_url': new_avatar}})
+        # Ensure documents missing avatar_url get a default
+        users_collection.update_many({'avatar_url': {'$exists': False}}, {'$set': {'avatar_url': 'default_avatar.png'}})
+    except Exception as e:
+        print('init_db: avatar sanitation failed:', e)
+
 def get_current_month_year():
     return datetime.now().strftime("%B %Y")
 
@@ -1021,7 +1037,12 @@ def auth_callback():
             username = f"{base_username}{i}"
             i += 1
 
-        avatar = userinfo.get('picture') or 'default_avatar.png'
+        # Assign a local random avatar from the bundled set to avoid storing
+        # external URLs (Google profile pictures) which the templates expect
+        # to be simple filenames and concatenate with our `/static/avatars/` path.
+        # This prevents 404s like `/static/avatars/https://lh3.google...`
+        import random
+        avatar = f"avatar{random.randint(1,25)}.png"
         try:
             r = users_collection.insert_one({
                 'username': username,
@@ -1218,50 +1239,78 @@ def dashboard():
     ).sort('supporter_count', -1).limit(7)
     top_nations = [(n['name'], n['flag_url'], n['supporter_count']) for n in top_nations_cursor]
     
-    # Get leaderboard
-    pipeline = [
-        {
-            '$lookup': {
+    # Get leaderboard using a MongoDB aggregation with $lookup to join user_stats
+    # This avoids building the entire user list in Python and is far more
+    # efficient for large collections (uses DB sort + skip + limit).
+    try:
+        try:
+            supporters_page = int(request.args.get('supporters_page', '1'))
+        except Exception:
+            supporters_page = 1
+        if supporters_page < 1:
+            supporters_page = 1
+        PAGE_SIZE = 10
+
+        total_supporters = users_collection.count_documents({'nation': {'$ne': None}})
+        total_pages = max(1, (total_supporters + PAGE_SIZE - 1) // PAGE_SIZE)
+        if supporters_page > total_pages:
+            supporters_page = total_pages
+        start_idx = (supporters_page - 1) * PAGE_SIZE
+
+        # Aggregation pipeline: match nation, project fields, lookup stats by converting _id to string
+        pipeline = [
+            {'$match': {'nation': {'$ne': None}}},
+            {'$project': {'username': 1, 'nation': 1, 'avatar_url': 1}},
+            {'$addFields': {'_id_str': {'$toString': '$_id'}}},
+            {'$lookup': {
                 'from': 'user_stats',
-                'localField': '_id',
-                'foreignField': 'user_id',
+                'let': {'uid': '$_id_str'},
+                'pipeline': [
+                    {'$match': {'$expr': {'$eq': ['$user_id', '$$uid']}}},
+                    {'$project': {'months_paid': 1, 'total_paid': 1, '_id': 0}}
+                ],
                 'as': 'stats'
-            }
-        },
-        {'$match': {'nation': {'$ne': None}}},
-        {'$unwind': {'path': '$stats', 'preserveNullAndEmptyArrays': True}},
-        {
-            '$project': {
-                'username': 1,
-                'nation': 1,
-                'avatar_url': 1,
+            }},
+            {'$unwind': {'path': '$stats', 'preserveNullAndEmptyArrays': True}},
+            {'$addFields': {
                 'months_paid': {'$ifNull': ['$stats.months_paid', 0]},
-                'total_paid': {'$ifNull': ['$stats.total_paid', 0.00]}
-            }
-        },
-        {'$sort': {'months_paid': -1, 'total_paid': -1}},
-        {'$limit': 10}
-    ]
-    
-    # MongoDB aggregation doesn't work with user_id as string reference
-    # Let's use a simpler approach
-    users_with_stats = []
-    for user in users_collection.find({'nation': {'$ne': None}}, {'username': 1, 'nation': 1, 'avatar_url': 1}):
-        stats = user_stats_collection.find_one({'user_id': str(user['_id'])})
-        users_with_stats.append({
-            'username': user['username'],
-            'nation': user['nation'],
-            'avatar_url': user.get('avatar_url', 'default_avatar.png'),
-            'months_paid': int(stats.get('months_paid', 0)) if stats else 0,
-            'total_paid': float(stats.get('total_paid', 0.00)) if stats else 0.00
-        })
-    
-    # Sort and limit
-    users_with_stats.sort(key=lambda x: (-x['months_paid'], -x['total_paid']))
-    leaderboard = [
-        (u['username'], u['nation'], u['avatar_url'], u['months_paid'], u['total_paid'])
-        for u in users_with_stats[:10]
-    ]
+                'total_paid': {'$ifNull': ['$stats.total_paid', 0]}
+            }},
+            {'$sort': {'months_paid': -1, 'total_paid': -1}},
+            {'$skip': start_idx},
+            {'$limit': PAGE_SIZE}
+        ]
+
+        cursor = users_collection.aggregate(pipeline)
+        leaderboard = []
+        idx = start_idx
+        for u in cursor:
+            idx += 1
+            leaderboard.append((u.get('username'), u.get('nation'), u.get('avatar_url', 'default_avatar.png'), int(u.get('months_paid', 0)), float(u.get('total_paid', 0.0))))
+    except Exception as e:
+        print('dashboard: leaderboard aggregation failed, falling back to in-memory (error):', e)
+        # Fallback: small dataset approach
+        users_with_stats = []
+        for user in users_collection.find({'nation': {'$ne': None}}, {'username': 1, 'nation': 1, 'avatar_url': 1}):
+            stats = user_stats_collection.find_one({'user_id': str(user['_id'])})
+            users_with_stats.append({
+                'username': user['username'],
+                'nation': user['nation'],
+                'avatar_url': user.get('avatar_url', 'default_avatar.png'),
+                'months_paid': int(stats.get('months_paid', 0)) if stats else 0,
+                'total_paid': float(stats.get('total_paid', 0.00)) if stats else 0.00
+            })
+
+        users_with_stats.sort(key=lambda x: (-x['months_paid'], -x['total_paid']))
+        supporters_page = int(request.args.get('supporters_page', '1')) if request.args.get('supporters_page') else 1
+        PAGE_SIZE = 10
+        total_supporters = len(users_with_stats)
+        total_pages = max(1, (total_supporters + PAGE_SIZE - 1) // PAGE_SIZE)
+        if supporters_page < 1: supporters_page = 1
+        if supporters_page > total_pages: supporters_page = total_pages
+        start_idx = (supporters_page - 1) * PAGE_SIZE
+        page_slice = users_with_stats[start_idx:start_idx+PAGE_SIZE]
+        leaderboard = [(u['username'], u['nation'], u['avatar_url'], u['months_paid'], u['total_paid']) for u in page_slice]
     
     # Calculate missed payments and payment status for all months
     months_until_wc = get_months_until_world_cup()
@@ -1314,7 +1363,122 @@ def dashboard():
                          can_claim_reward=can_claim_reward,
                          pending_claim=pending_claim,
                          missed_months=missed_months,
-                         payment_calendar=payment_calendar)
+                         payment_calendar=payment_calendar,
+                         supporters_page=supporters_page,
+                         total_pages=total_pages,
+                         total_supporters=total_supporters,
+                         index_start=start_idx)
+
+
+@app.route('/api/supporters')
+def api_supporters():
+    """Return JSON slice of supporters for AJAX pagination.
+    Query params: page (int)
+    """
+    if 'user_id' not in session:
+        return jsonify({'status': 'error', 'message': 'not_authenticated'}), 401
+
+    try:
+        supporters_page = int(request.args.get('page', '1'))
+    except Exception:
+        supporters_page = 1
+    if supporters_page < 1:
+        supporters_page = 1
+
+    PAGE_SIZE = 10
+
+    # Use DB aggregation for pagination + lookup for efficiency
+    try:
+        total_supporters = users_collection.count_documents({'nation': {'$ne': None}})
+        total_pages = max(1, (total_supporters + PAGE_SIZE - 1) // PAGE_SIZE)
+        if supporters_page > total_pages:
+            supporters_page = total_pages
+
+        start_idx = (supporters_page - 1) * PAGE_SIZE
+
+        pipeline = [
+            {'$match': {'nation': {'$ne': None}}},
+            {'$project': {'username': 1, 'nation': 1, 'avatar_url': 1}},
+            {'$addFields': {'_id_str': {'$toString': '$_id'}}},
+            {'$lookup': {
+                'from': 'user_stats',
+                'let': {'uid': '$_id_str'},
+                'pipeline': [
+                    {'$match': {'$expr': {'$eq': ['$user_id', '$$uid']}}},
+                    {'$project': {'months_paid': 1, 'total_paid': 1, '_id': 0}}
+                ],
+                'as': 'stats'
+            }},
+            {'$unwind': {'path': '$stats', 'preserveNullAndEmptyArrays': True}},
+            {'$addFields': {
+                'months_paid': {'$ifNull': ['$stats.months_paid', 0]},
+                'total_paid': {'$ifNull': ['$stats.total_paid', 0]}
+            }},
+            {'$sort': {'months_paid': -1, 'total_paid': -1}},
+            {'$skip': start_idx},
+            {'$limit': PAGE_SIZE}
+        ]
+
+        cursor = users_collection.aggregate(pipeline)
+        entries = []
+        for u in cursor:
+            entries.append({
+                'username': u.get('username'),
+                'nation': u.get('nation'),
+                'avatar_url': u.get('avatar_url', 'default_avatar.png'),
+                'months_paid': int(u.get('months_paid', 0)),
+                'total_paid': float(u.get('total_paid', 0.0))
+            })
+
+        return jsonify({
+            'status': 'ok',
+            'entries': entries,
+            'page': supporters_page,
+            'page_size': PAGE_SIZE,
+            'total_supporters': total_supporters,
+            'total_pages': total_pages,
+            'index_start': start_idx
+        })
+    except Exception as e:
+        print('api_supporters: aggregation failed, falling back to in-memory (error):', e)
+        # Fallback to previous behavior
+        users_with_stats = []
+        for user in users_collection.find({'nation': {'$ne': None}}, {'username': 1, 'nation': 1, 'avatar_url': 1}):
+            stats = user_stats_collection.find_one({'user_id': str(user['_id'])})
+            users_with_stats.append({
+                'username': user['username'],
+                'nation': user['nation'],
+                'avatar_url': user.get('avatar_url', 'default_avatar.png'),
+                'months_paid': int(stats.get('months_paid', 0)) if stats else 0,
+                'total_paid': float(stats.get('total_paid', 0.00)) if stats else 0.00
+            })
+
+        users_with_stats.sort(key=lambda x: (-x['months_paid'], -x['total_paid']))
+        total_supporters = len(users_with_stats)
+        total_pages = max(1, (total_supporters + PAGE_SIZE - 1) // PAGE_SIZE)
+        if supporters_page > total_pages:
+            supporters_page = total_pages
+        start_idx = (supporters_page - 1) * PAGE_SIZE
+        page_slice = users_with_stats[start_idx:start_idx+PAGE_SIZE]
+        entries = []
+        for u in page_slice:
+            entries.append({
+                'username': u['username'],
+                'nation': u['nation'],
+                'avatar_url': u['avatar_url'],
+                'months_paid': u['months_paid'],
+                'total_paid': u['total_paid']
+            })
+
+        return jsonify({
+            'status': 'ok',
+            'entries': entries,
+            'page': supporters_page,
+            'page_size': PAGE_SIZE,
+            'total_supporters': total_supporters,
+            'total_pages': total_pages,
+            'index_start': start_idx
+        })
 @app.route('/pay-monthly')
 def pay_monthly():
     if 'user_id' not in session:
@@ -1416,6 +1580,9 @@ def verify_razorpay_payment():
         # 1) UPI/manual mode: client posts a transaction_id (preferred)
         # 2) Legacy Razorpay mode: verify Razorpay signature if client provides it
         order_id = request.form.get('razorpay_order_id') or request.form.get('order_id')
+        # Legacy params (may be provided by Razorpay callbacks)
+        payment_id = request.form.get('razorpay_payment_id') or request.form.get('payment_id')
+        signature = request.form.get('razorpay_signature') or request.form.get('signature')
 
         txn_id = (request.form.get('transaction_id') or request.form.get('txn_id') or '').strip()
 
