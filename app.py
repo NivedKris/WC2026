@@ -147,8 +147,12 @@ def subscribe():
             {'$set': {'keys': norm.get('keys', {}), 'expirationTime': norm.get('expirationTime'), 'created_at': datetime.utcnow()}},
             upsert=True
         )
+        # Convert any ObjectId to string so jsonify doesn't fail
+        upserted = getattr(result, 'upserted_id', None)
+        upserted_id = str(upserted) if upserted is not None else None
+        matched = getattr(result, 'matched_count', None)
         # Return the normalized subscription and upsert result for debugging
-        return jsonify({'status': 'ok', 'normalized': norm, 'matched_count': getattr(result, 'matched_count', None), 'upserted_id': getattr(result, 'upserted_id', None)}), 201
+        return jsonify({'status': 'ok', 'normalized': norm, 'matched_count': matched, 'upserted_id': upserted_id}), 201
     except Exception as e:
         print('subscribe error', e)
         return jsonify({'status': 'error', 'message': str(e)}), 500
