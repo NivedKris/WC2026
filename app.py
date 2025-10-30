@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_from_directory
+from urllib.parse import unquote_plus
 import socket
 from flask_mail import Mail, Message
 import requests
@@ -10,6 +11,7 @@ from bson.objectid import ObjectId
 import os
 import json
 from dotenv import load_dotenv
+from pywebpush import webpush, WebPushException
 import hashlib
 from flask_compress import Compress
 import requests
@@ -26,8 +28,11 @@ app.jinja_env.globals.update(
     os=os,
     UPI_ID=os.getenv('UPI_ID')
 )
+
+
 @app.after_request
 def add_header(response):
+    # Cache static files aggressively
     if request.path.startswith('/static/'):
         response.headers['Cache-Control'] = 'public, max-age=31536000'
     return response
@@ -90,6 +95,162 @@ user_stats_collection = db['user_stats']
 winner_claims_collection = db['winner_claims']
 app_settings_collection = db['app_settings']
 
+# Collection for storing push subscriptions
+push_subscriptions_collection = db['push_subscriptions']
+
+
+@app.route('/vapid_public_key', methods=['GET'])
+def vapid_public_key():
+    """Returns the VAPID public key for the frontend to subscribe."""
+    public = os.getenv('VAPID_PUBLIC_KEY')
+    if not public:
+        return jsonify({'error': 'VAPID public key not configured'}), 500
+    return jsonify({'publicKey': public})
+
+
+def _normalize_subscription(sub):
+    """Normalize subscription dict to a stable JSON-able structure for storage."""
+    try:
+        return {
+            'endpoint': sub.get('endpoint'),
+            'keys': sub.get('keys') or {},
+            'expirationTime': sub.get('expirationTime')
+        }
+    except Exception:
+        return None
+
+
+@app.route('/subscribe', methods=['POST'])
+def subscribe():
+    try:
+        sub = request.get_json(force=True)
+        print('DEBUG /subscribe received payload:', str(sub)[:1000])
+        norm = _normalize_subscription(sub)
+        if not norm or not norm.get('endpoint'):
+            return jsonify({'status': 'error', 'message': 'invalid subscription'}), 400
+
+        # Upsert by endpoint to avoid duplicates
+        push_subscriptions_collection.update_one(
+            {'endpoint': norm['endpoint']},
+            {'$set': {'keys': norm.get('keys', {}), 'expirationTime': norm.get('expirationTime'), 'created_at': datetime.utcnow()}},
+            upsert=True
+        )
+        return jsonify({'status': 'ok'}), 201
+    except Exception as e:
+        print('subscribe error', e)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/unsubscribe', methods=['POST'])
+def unsubscribe():
+    try:
+        sub = request.get_json(force=True)
+        endpoint = sub.get('endpoint') if isinstance(sub, dict) else None
+        if not endpoint:
+            return jsonify({'status': 'error', 'message': 'invalid payload'}), 400
+        res = push_subscriptions_collection.delete_one({'endpoint': endpoint})
+        return jsonify({'status': 'ok', 'deleted': res.deleted_count}), 200
+    except Exception as e:
+        print('unsubscribe error', e)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+def send_push(subscription_doc, payload):
+    """Send a single web-push to a stored subscription document.
+    subscription_doc must include 'endpoint' and 'keys'."""
+    private = os.getenv('VAPID_PRIVATE_KEY')
+    if not private:
+        raise RuntimeError('VAPID_PRIVATE_KEY not set')
+
+    try:
+        webpush(
+            subscription_info={
+                'endpoint': subscription_doc['endpoint'],
+                'keys': subscription_doc.get('keys', {})
+            },
+            data=json.dumps(payload),
+            vapid_private_key=private,
+            vapid_claims={"sub": os.getenv('VAPID_SUB', 'mailto:admin@example.com')}
+        )
+        return True
+    except WebPushException as ex:
+        # If subscription is gone or unsubscribed, remove it (410 or 404)
+        try:
+            status_code = getattr(ex, 'response', None) and getattr(ex.response, 'status_code', None)
+            print('webpush exception', ex, 'status_code=', status_code)
+        except Exception:
+            print('webpush exception', ex)
+        return False
+
+
+@app.route('/notify', methods=['POST'])
+def notify():
+    """Admin-protected endpoint to broadcast a notification to all stored subscriptions.
+    Body: { title, body, url (optional) }
+    """
+    # TODO: protect this endpoint with admin auth in production
+    try:
+        data = request.get_json(force=True) or {}
+        title = data.get('title', 'WC 2026')
+        body = data.get('body', '')
+        url = data.get('url')
+
+        # Build payload and include optional HTML content in data for clients that support it
+        payload = {'title': title, 'body': body, 'data': {}}
+        if url:
+            payload['data']['url'] = url
+        html = data.get('html')
+        # If raw HTML not provided, but a structured template was sent, render it server-side
+        if not html and isinstance(data.get('template'), dict):
+            try:
+                tmpl = data.get('template') or {}
+                rendered = render_template('push_template.html',
+                                           title=tmpl.get('headline') or title,
+                                           headline=tmpl.get('headline') or title,
+                                           subheadline=tmpl.get('subheadline'),
+                                           message=tmpl.get('message'),
+                                           image=tmpl.get('image'),
+                                           cta_text=tmpl.get('cta_text'),
+                                           cta_url=tmpl.get('cta_url'))
+                payload['data']['html'] = rendered
+                # Mark that this notification used a template (for debugging)
+                payload['data']['template_used'] = True
+            except Exception as e:
+                print('template render failed', e)
+                html = None
+        elif html:
+            # include raw html as part of the payload data (clients should sanitize/use as needed)
+            payload['data']['html'] = html
+        # allow_js: whether the admin allows scripts to run in the notification viewer
+        # Default behaviour: if admin sent HTML and didn't explicitly set allow_js,
+        # treat allow_js as True (per user's request to make it true by default).
+        if 'allow_js' in data:
+            allow_js = bool(data.get('allow_js'))
+        else:
+            allow_js = bool(html)
+        if allow_js:
+            payload['data']['allow_js'] = True
+
+        subs = list(push_subscriptions_collection.find({}))
+        removed = 0
+        sent = 0
+        for s in subs:
+            ok = send_push(s, payload)
+            if ok:
+                sent += 1
+            else:
+                # best-effort remove (cleanup)
+                try:
+                    push_subscriptions_collection.delete_one({'_id': s['_id']})
+                    removed += 1
+                except Exception:
+                    pass
+
+        return jsonify({'status': 'ok', 'sent': sent, 'removed': removed}), 200
+    except Exception as e:
+        print('notify error', e)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/wake-webhook', methods=['GET'])
 def wake_webhook():
@@ -108,6 +269,26 @@ def wake_webhook():
         return jsonify({'ok': resp.status_code == 200, 'status': resp.status_code, 'body': body}), resp.status_code
     except requests.exceptions.RequestException as e:
         return jsonify({'ok': False, 'error': str(e)}), 502
+
+
+@app.route('/service-worker.js')
+def service_worker_root():
+    """Serve the service worker at the root so its scope covers the whole origin."""
+    return send_from_directory(app.static_folder, 'service-worker.js')
+
+
+@app.route('/push-viewer')
+def push_viewer():
+    """Simple viewer that renders encoded HTML payloads in a sandboxed iframe.
+    Usage: /push-viewer?html=<encodedURIComponent(html)>
+    """
+    raw = request.args.get('html', '')
+    try:
+        html = unquote_plus(raw)
+    except Exception:
+        html = raw
+    allow_js = request.args.get('allow_js') in ('1', 'true', 'True')
+    return render_template('push_viewer.html', html=html, allow_js=allow_js)
 
 # Razorpay is deprecated in this deployment; keep placeholders in env for compatibility but do not initialize client
 try:
@@ -527,16 +708,17 @@ def send_winner_announcement_to_winners(winning_nation):
         {'username': 1, 'email': 1}
     ))
     
-    # Calculate reward info
+    # Calculate reward info from completed monthly payments
     pipeline = [
         {'$match': {'status': 'completed'}},
         {'$group': {'_id': None, 'total': {'$sum': '$amount'}}}
     ]
     result = list(monthly_payments_collection.aggregate(pipeline))
     total_pool = result[0]['total'] if result else 0
+
     winner_count = len(winners)
     reward_per_person = round(total_pool / winner_count, 2) if winner_count > 0 else 0
-    
+
     for winner in winners:
         username = winner['username']
         email = winner['email']
@@ -683,7 +865,7 @@ def send_monthly_reminder_to_all(reminder_type='start'):
 
     # Get user IDs who have already paid or have pending payment for current month
     paid_user_ids = [
-        p['user_id'] for p in monthly_payments_collection.find(
+        str(p['user_id']) for p in monthly_payments_collection.find(
             {
                 'month_year': current_month,
                 'status': {'$in': ['completed', 'pending']}
@@ -698,7 +880,6 @@ def send_monthly_reminder_to_all(reminder_type='start'):
     BATCH_SIZE = 50
     SLEEP_BETWEEN_BATCHES = 1  # seconds
     to_send = [u for u in all_users if str(u['_id']) not in paid_user_ids]
-    import time
     for i in range(0, len(to_send), BATCH_SIZE):
         batch = to_send[i:i+BATCH_SIZE]
         for user in batch:

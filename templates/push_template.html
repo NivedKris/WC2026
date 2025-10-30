@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ title or 'WC2026' }}</title>
+  <style>
+    :root{ --bg:#081321; --card:#0b1624; --muted:#9fb1c9; --accent:#1fb6ff; color-scheme: dark; }
+    body{ margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial; background:var(--bg); color:#e6f0fb; }
+    .wrap{ padding:20px; display:flex; align-items:center; gap:16px; }
+    .card{ background:linear-gradient(180deg,#07202b 0%, #0b1624 100%); border-radius:12px; padding:16px; width:100%; box-shadow:0 6px 20px rgba(0,0,0,0.45); }
+    .title{ font-size:18px; font-weight:700; margin:0 0 6px 0; }
+    .sub{ font-size:13px; color:var(--muted); margin:0 0 10px 0; }
+    .msg{ font-size:14px; margin:0 0 12px 0; color:#cfe8ff; }
+    .cta{ display:inline-block; padding:8px 12px; background:var(--accent); color:#002033; border-radius:8px; font-weight:700; text-decoration:none; }
+    .thumb{ width:72px; height:72px; border-radius:8px; object-fit:cover; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;">
+        {% if image %}
+        <img src="{{ image }}" alt="thumb" class="thumb" />
+        {% endif %}
+        <div style="flex:1;">
+          <h1 class="title">{{ headline or title }}</h1>
+          {% if subheadline %}
+          <p class="sub">{{ subheadline }}</p>
+          {% endif %}
+          {% if message %}
+          <p class="msg">{{ message }}</p>
+          {% endif %}
+          {% if cta_text and cta_url %}
+          <a class="cta" href="{{ cta_url }}" target="_blank" rel="noopener noreferrer">{{ cta_text }}</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
