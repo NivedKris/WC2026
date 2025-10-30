@@ -93,15 +93,17 @@
 
       console.log('[push] subscription obtained:', subscription);
 
-      // send subscription to server (debug logging)
+      // send subscription to server (debug logging). Use toJSON() to ensure serializable payload.
       try {
+        const payload = (typeof subscription.toJSON === 'function') ? subscription.toJSON() : subscription;
         const resp = await fetch('/subscribe', {
           method: 'POST',
-          credentials: 'same-origin',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(subscription)
+          body: JSON.stringify(payload)
         });
-        console.log('[push] /subscribe response', resp.status);
+        let text = '';
+        try { text = await resp.text(); } catch(e){}
+        console.log('[push] /subscribe response', resp.status, text);
       } catch (err) {
         console.error('[push] failed to POST subscription', err);
       }
@@ -153,6 +155,13 @@
               console.log('[push] notification permission:', p);
               // mark that we've asked so we don't repeatedly annoy users
               try { localStorage.setItem('pushPermissionAsked', '1'); } catch(e){}
+              // If granted, attempt to subscribe immediately (useful for mobile users)
+              if (p === 'granted') {
+                try {
+                  // wait a moment for service worker readiness
+                  setTimeout(() => { try { window.pushHelper.subscribe(); } catch(e) { console.error('[push] auto-subscribe failed', e); } }, 800);
+                } catch(e) { console.error('[push] auto-subscribe schedule failed', e); }
+              }
             }).catch(()=>{ try{ localStorage.setItem('pushPermissionAsked','1'); }catch(e){} });
           } catch(e) { try{ localStorage.setItem('pushPermissionAsked','1'); }catch(e){} }
         }, 1500);

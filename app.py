@@ -123,19 +123,32 @@ def _normalize_subscription(sub):
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
     try:
-        sub = request.get_json(force=True)
-        print('DEBUG /subscribe received payload:', str(sub)[:1000])
+        # Accept JSON body; some clients may POST a JSON stringified subscription
+        raw = request.get_data(as_text=True)
+        print('DEBUG /subscribe remote_addr=', request.remote_addr, 'headers=', {k: v for k, v in request.headers.items() if k.lower().startswith('content') or k.lower().startswith('user')})
+        print('DEBUG /subscribe raw body (first 2000 chars):', raw[:2000])
+        try:
+            sub = request.get_json(force=True)
+        except Exception:
+            # Try to parse raw body if it's a JSON string inside
+            try:
+                sub = json.loads(raw)
+            except Exception:
+                sub = None
+        print('DEBUG /subscribe parsed payload type:', type(sub), 'preview:', str(sub)[:1000])
         norm = _normalize_subscription(sub)
         if not norm or not norm.get('endpoint'):
-            return jsonify({'status': 'error', 'message': 'invalid subscription'}), 400
+            # Return diagnostic info to help debugging from client
+            return jsonify({'status': 'error', 'message': 'invalid subscription', 'received': sub, 'raw': raw[:2000]}), 400
 
         # Upsert by endpoint to avoid duplicates
-        push_subscriptions_collection.update_one(
+        result = push_subscriptions_collection.update_one(
             {'endpoint': norm['endpoint']},
             {'$set': {'keys': norm.get('keys', {}), 'expirationTime': norm.get('expirationTime'), 'created_at': datetime.utcnow()}},
             upsert=True
         )
-        return jsonify({'status': 'ok'}), 201
+        # Return the normalized subscription and upsert result for debugging
+        return jsonify({'status': 'ok', 'normalized': norm, 'matched_count': getattr(result, 'matched_count', None), 'upserted_id': getattr(result, 'upserted_id', None)}), 201
     except Exception as e:
         print('subscribe error', e)
         return jsonify({'status': 'error', 'message': str(e)}), 500
