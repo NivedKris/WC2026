@@ -104,12 +104,15 @@
         let text = '';
         try { text = await resp.text(); } catch(e){}
         console.log('[push] /subscribe response', resp.status, text);
+        return resp.status >= 200 && resp.status < 300;
       } catch (err) {
         console.error('[push] failed to POST subscription', err);
+        return false;
       }
 
     } catch (e) {
       console.error('[push] subscribe error', e);
+      return false;
     }
   }
 
@@ -169,4 +172,58 @@
     }
   } catch(e) { /* ignore */ }
 
+})();
+
+// Additional logic: ensure subscription with retries when permission is granted
+(function(){
+  'use strict';
+  async function ensureSubscribed() {
+    try {
+      await window.pushHelper.init();
+      const reg = await navigator.serviceWorker.ready;
+      if (!reg) return false;
+
+      // if already subscribed, ensure server has a copy
+      try {
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) {
+          try {
+            const payload = (typeof existing.toJSON === 'function') ? existing.toJSON() : existing;
+            const r = await fetch('/subscribe', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            if (r.status >= 200 && r.status < 300) return true;
+          } catch(e) { console.error('[push ensure] resend existing failed', e); }
+        }
+      } catch(e){ console.error('[push ensure] getSubscription failed', e); }
+
+      // quick retries
+      for (let i=0;i<5;i++){
+        const ok = await window.pushHelper.subscribe();
+        if (ok) return true;
+        await new Promise(r=>setTimeout(r, 1000*(i+1)));
+      }
+
+      // schedule periodic retry
+      const interval = setInterval(async ()=>{
+        try {
+          const ok = await window.pushHelper.subscribe();
+          if (ok) clearInterval(interval);
+        } catch(e){ console.error('[push ensure] periodic retry failed', e); }
+      }, 1000*60*5);
+
+      return false;
+    } catch(e) { console.error('[push ensure] error', e); return false; }
+  }
+
+  if (window.Notification && Notification.permission === 'granted') {
+    setTimeout(()=>ensureSubscribed(), 500);
+  }
+
+  // hook permission changes via polling (some browsers don't fire events)
+  setInterval(()=>{
+    try{
+      if (window.Notification && Notification.permission === 'granted') {
+        ensureSubscribed();
+      }
+    }catch(e){}
+  }, 1000*30);
 })();
